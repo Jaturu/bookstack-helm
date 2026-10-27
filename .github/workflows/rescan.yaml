@@ -57,13 +57,15 @@ jobs:
       - name: Pull the published SBOM for this platform
         run: |
           digest="$(crane digest --platform '${{ matrix.platform }}' "${IMAGE}:latest")"
+          # A rebuild that reproduces the same platform digest (a forced or
+          # mode-only rebuild) attaches a second SBOM to it. They describe the
+          # same image, so take the newest by its creation annotation.
           referrer="$(oras discover --format json "${IMAGE}@${digest}" \
-            | jq -r '.referrers[]
-                | select(.artifactType=="application/vnd.cyclonedx+json") | .digest')"
-          case "$(printf '%s' "$referrer" | wc -w)" in
-            1) ;;
-            *) echo "expected one SBOM referrer, got: ${referrer}" >&2; exit 1;;
-          esac
+            | jq -r '[.referrers[]
+                | select(.artifactType=="application/vnd.cyclonedx+json")]
+                | sort_by(.annotations["org.opencontainers.image.created"] // "")
+                | last | .digest // empty')"
+          [ -n "$referrer" ] || { echo "no SBOM referrer on ${IMAGE}@${digest}" >&2; exit 1; }
           oras pull -o . "${IMAGE}@${referrer}"
           echo "PLATFORM_DIGEST=${digest}" >> "$GITHUB_ENV"
 
