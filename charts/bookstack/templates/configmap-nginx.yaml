@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bookstack.fullname" . }}-nginx
+  labels:
+    {{- include "bookstack.labels" (dict "ctx" $ "component" "app") | nindent 4 }}
+data:
+  bookstack.conf: |
+    # Application server – exposed by the Service.
+    server {
+        listen {{ .Values.nginx.port }};
+        server_name _;
+        server_tokens off;
+
+        # Static assets are copied from the image into an emptyDir by an init
+        # container; public/uploads (system images) is the PVC subPath, ro.
+        root /var/www/bookstack/public;
+        index index.php;
+
+        client_max_body_size {{ add (int .Values.bookstack.uploadLimitMB) 5 }}m;
+
+        gzip on;
+        gzip_types text/css application/javascript image/svg+xml application/json;
+
+        # Existing static files are served directly; everything else –
+        # including secure uploads under /uploads/images – goes to BookStack.
+        location / {
+            try_files $uri $uri/ /index.php?$query_string;
+        }
+
+        location /dist/ {
+            try_files $uri =404;
+            expires 7d;
+            access_log off;
+        }
+
+        # Only the front controller is executable.
+        location = /index.php {
+            fastcgi_pass 127.0.0.1:9000;
+            include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME /var/www/bookstack/public/index.php;
+            fastcgi_param DOCUMENT_ROOT   /var/www/bookstack/public;
+            fastcgi_read_timeout 120s;
+            fastcgi_buffers 16 16k;
+            fastcgi_buffer_size 32k;
+        }
+
+        location ~ \.php$ { return 404; }
+        location ~ /\.    { deny all; }
+    }
+
+    # Health server – kubelet probes only, not exposed by the Service.
+    server {
+        listen {{ .Values.probes.healthPort }};
+        server_name _;
+        server_tokens off;
+        access_log off;
+
+        location = /fpm-ping {
+            fastcgi_pass 127.0.0.1:9000;
+            include fastcgi_params;
+            fastcgi_param SCRIPT_NAME     /fpm-ping;
+            fastcgi_param SCRIPT_FILENAME /fpm-ping;
+        }
+
+        location / { return 404; }
+    }

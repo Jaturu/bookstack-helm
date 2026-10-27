@@ -1,0 +1,44 @@
+{{- /*
+  Non-secret BookStack settings. Keys modelled in values.yaml are rendered
+  here; bookstack.env adds anything else. Setting a modelled key in
+  bookstack.env fails the render, so each setting has exactly one source.
+*/ -}}
+{{- $b := .Values.bookstack }}
+{{- $managed := dict
+      "APP_URL"                 $b.appUrl
+      "APP_TIMEZONE"            $b.timezone
+      "APP_LANG"                $b.lang
+      "DB_HOST"                 (include "bookstack.db.host" .)
+      "DB_PORT"                 (include "bookstack.db.port" .)
+      "DB_DATABASE"             (include "bookstack.db.database" .)
+      "DB_USERNAME"             (include "bookstack.db.username" .)
+      "STORAGE_TYPE"            $b.storageType
+      "FILE_UPLOAD_SIZE_LIMIT"  (toString $b.uploadLimitMB)
+}}
+{{- with $b.trustedProxies }}{{ $_ := set $managed "APP_PROXIES" . }}{{ end }}
+{{- with $b.storageImageType }}{{ $_ := set $managed "STORAGE_IMAGE_TYPE" . }}{{ end }}
+{{- with $b.storageAttachmentType }}{{ $_ := set $managed "STORAGE_ATTACHMENT_TYPE" . }}{{ end }}
+{{- if has "s3" (list $b.storageType $b.storageImageType $b.storageAttachmentType) }}
+{{- $_ := set $managed "STORAGE_S3_BUCKET" $b.s3.bucket }}
+{{- $_ := set $managed "STORAGE_S3_REGION" $b.s3.region }}
+{{- with $b.s3.endpoint }}{{ $_ := set $managed "STORAGE_S3_ENDPOINT" . }}{{ end }}
+{{- with $b.s3.url }}{{ $_ := set $managed "STORAGE_URL" . }}{{ end }}
+{{- end }}
+{{- range $k, $_ := $b.env }}
+{{- if hasKey $managed $k }}
+{{- fail (printf "bookstack.env.%s is set by the chart from a dedicated value – set that value instead" $k) }}
+{{- end }}
+{{- if or (eq $k "APP_KEY") (eq $k "DB_PASSWORD") (hasPrefix "STORAGE_S3_KEY" $k) (eq $k "STORAGE_S3_SECRET") }}
+{{- fail (printf "bookstack.env.%s is a secret – supply it via its existingSecret value" $k) }}
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bookstack.fullname" . }}
+  labels:
+    {{- include "bookstack.labels" (dict "ctx" $ "component" "app") | nindent 4 }}
+data:
+  {{- range $k, $v := (merge (dict) $managed $b.env) }}
+  {{ $k }}: {{ toString $v | quote }}
+  {{- end }}

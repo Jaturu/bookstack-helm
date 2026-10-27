@@ -1,0 +1,11 @@
+{{- if .Values.mariadb.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bookstack.mariadb.fullname" . }}
+  labels:
+    {{- include "bookstack.labels" (dict "ctx" $ "component" "mariadb") | nindent 4 }}
+data:
+  zz-chart.cnf: |
+    {{- .Values.mariadb.config | nindent 4 }}
+{{- end }}

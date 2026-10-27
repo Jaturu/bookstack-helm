@@ -1,0 +1,124 @@
+{{- if .Values.mariadb.enabled }}
+{{- $m := .Values.mariadb }}
+{{- $secret := include "bookstack.mariadb.secretName" . }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "bookstack.mariadb.fullname" . }}
+  labels:
+    {{- include "bookstack.labels" (dict "ctx" $ "component" "mariadb") | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: {{ include "bookstack.mariadb.fullname" . }}
+  selector:
+    matchLabels:
+      {{- include "bookstack.selectorLabels" (dict "ctx" $ "component" "mariadb") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bookstack.labels" (dict "ctx" $ "component" "mariadb") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/mariadb-configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        {{- toYaml $m.podSecurityContext | nindent 8 }}
+      containers:
+        - name: mariadb
+          image: {{ include "bookstack.imageRef" (dict "image" $m.image "default" "") }}
+          imagePullPolicy: {{ $m.image.pullPolicy }}
+          securityContext:
+            {{- toYaml $m.securityContext | nindent 12 }}
+          env:
+            - name: MARIADB_DATABASE
+              value: {{ $m.auth.database | quote }}
+            - name: MARIADB_USER
+              value: {{ $m.auth.username | quote }}
+            - name: MARIADB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ $m.auth.passwordKey }}
+            - name: MARIADB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ $m.auth.rootPasswordKey }}
+            # Run mariadb-upgrade automatically after an image version change.
+            - name: MARIADB_AUTO_UPGRADE
+              value: "1"
+          ports:
+            - name: mysql
+              containerPort: 3306
+              protocol: TCP
+          # healthcheck.sh ships in the official image; the entrypoint creates
+          # its credentials file in the data directory on first init.
+          startupProbe:
+            exec:
+              command: ["healthcheck.sh", "--connect", "--innodb_initialized"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            exec:
+              command: ["healthcheck.sh", "--connect"]
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["healthcheck.sh", "--connect", "--innodb_initialized"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml $m.resources | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/mysql }
+            - { name: config, mountPath: /etc/mysql/conf.d/zz-chart.cnf, subPath: zz-chart.cnf, readOnly: true }
+            - { name: run, mountPath: /run/mysqld }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "bookstack.mariadb.fullname" . }}
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+      {{- with $m.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $m.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $m.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  # The data PVC is kept when the StatefulSet is deleted or scaled down.
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "bookstack.selectorLabels" (dict "ctx" $ "component" "mariadb") | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml $m.persistence.accessModes | nindent 10 }}
+        {{- with $m.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $m.persistence.size }}
+{{- end }}

@@ -1,0 +1,110 @@
+{{ template "chart.header" . }}
+
+{{ template "chart.badgesSection" . }}
+
+{{ template "chart.description" . }}
+
+[BookStack](https://www.bookstackapp.com/) is a self-hosted wiki for organising
+documentation into shelves, books, chapters and pages. This chart runs it on a
+purpose-built, non-root image and is designed to pass the Kubernetes
+`restricted` Pod Security Standard.
+
+## Features
+
+- **Non-root php-fpm + nginx-unprivileged** in one pod, read-only root
+  filesystems, all capabilities dropped, `RuntimeDefault` seccomp.
+- **Optional built-in MariaDB** (official `mariadb` image, LTS series) or any
+  external MySQL 8.0+ / MariaDB 10.6+.
+- **Generated secrets that survive upgrades** — `APP_KEY` and database
+  passwords are created on first install, reused on every upgrade and kept on
+  uninstall.
+- **Permission-checked uploads by default** (`local_secure_restricted`), with
+  `local`, `local_secure` and S3-compatible storage also supported.
+- **Gateway API `HTTPRoute`** and/or **`Ingress`**.
+- **Automatic migrations** in an init container before BookStack starts.
+- **Render-time validation** of required and conflicting values.
+
+## Installing
+
+```console
+helm repo add bookstack https://jaturu.github.io/bookstack-helm
+helm repo update
+helm install wiki bookstack/bookstack \
+  --namespace bookstack --create-namespace \
+  --set bookstack.appUrl=https://wiki.example.com
+```
+
+`bookstack.appUrl` is the only required value. The first login is
+`admin@admin.com` / `password` — change it immediately.
+
+### Example: Gateway API
+
+```yaml
+bookstack:
+  appUrl: https://wiki.example.com
+  # Pod network of the gateway, so BookStack trusts X-Forwarded-* headers.
+  trustedProxies: "10.244.0.0/16"
+
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: my-gateway
+      namespace: gateway-system
+      sectionName: https
+  hostnames:
+    - wiki.example.com
+
+persistence:
+  storageClass: fast-rwo
+mariadb:
+  persistence:
+    storageClass: fast-rwo
+```
+
+### Example: Ingress with cert-manager
+
+```yaml
+bookstack:
+  appUrl: https://wiki.example.com
+  trustedProxies: "10.0.0.0/8"
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-body-size: 55m
+  hosts:
+    - wiki.example.com
+  tls:
+    - secretName: wiki-tls
+      hosts:
+        - wiki.example.com
+```
+
+## Guides
+
+| Guide | Covers |
+|-------|--------|
+| [Architecture](https://github.com/Jaturu/bookstack-helm/blob/main/docs/architecture.md) | Pod layout, volumes, security model, probes |
+| [Storage](https://github.com/Jaturu/bookstack-helm/blob/main/docs/storage.md) | Upload storage modes and their permission behaviour, S3 / ObjectBucketClaim |
+| [Database](https://github.com/Jaturu/bookstack-helm/blob/main/docs/database.md) | Built-in vs external database, secrets, backup and restore |
+| [Exposure](https://github.com/Jaturu/bookstack-helm/blob/main/docs/exposure.md) | HTTPRoute and Ingress, TLS, trusted proxies, upload size limits |
+| [Upgrading](https://github.com/Jaturu/bookstack-helm/blob/main/docs/upgrading.md) | BookStack and MariaDB upgrades, what uninstall leaves behind |
+| [Image](https://github.com/Jaturu/bookstack-helm/blob/main/docs/image.md) | How the container image is built and versioned |
+
+## Uninstalling
+
+```console
+helm uninstall wiki -n bookstack
+```
+
+By design this **keeps** the `APP_KEY` and MariaDB Secrets, the uploads PVC and
+the MariaDB data PVC. Delete them explicitly to remove all data — see
+[Upgrading](https://github.com/Jaturu/bookstack-helm/blob/main/docs/upgrading.md#uninstalling).
+
+{{ template "chart.requirementsSection" . }}
+
+{{ template "chart.valuesSection" . }}
+
+{{ template "helm-docs.versionFooter" . }}

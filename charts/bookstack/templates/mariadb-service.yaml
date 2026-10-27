@@ -1,0 +1,19 @@
+{{- if .Values.mariadb.enabled }}
+# Headless: the single StatefulSet pod gets a stable DNS name, and the app
+# connects to this Service name (DB_HOST) on 3306.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bookstack.mariadb.fullname" . }}
+  labels:
+    {{- include "bookstack.labels" (dict "ctx" $ "component" "mariadb") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "bookstack.selectorLabels" (dict "ctx" $ "component" "mariadb") | nindent 4 }}
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+      protocol: TCP
+{{- end }}

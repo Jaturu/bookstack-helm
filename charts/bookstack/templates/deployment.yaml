@@ -1,0 +1,169 @@
+{{- include "bookstack.validate" . }}
+{{- $fullname := include "bookstack.fullname" . }}
+{{- $appImage := include "bookstack.imageRef" (dict "image" .Values.image "default" .Chart.AppVersion) }}
+{{- $b := .Values.bookstack }}
+{{- $useS3 := has "s3" (list $b.storageType $b.storageImageType $b.storageAttachmentType) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "bookstack.labels" (dict "ctx" $ "component" "app") | nindent 4 }}
+spec:
+  replicas: 1
+  # RWO volume: the old pod must release it before the new one starts.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "bookstack.selectorLabels" (dict "ctx" $ "component" "app") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bookstack.labels" (dict "ctx" $ "component" "app") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/nginx: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
+        checksum/php: {{ include (print $.Template.BasePath "/configmap-php.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      initContainers:
+        # Copy the image's public/ assets and Laravel bootstrap cache into
+        # emptyDirs: nginx serves public/ from its own container, and
+        # bootstrap/cache must be writable under a read-only root filesystem.
+        - name: copy-assets
+          image: {{ $appImage }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c"]
+          args:
+            - >-
+              cp -a /var/www/bookstack/public/. /public/ &&
+              cp -a /var/www/bookstack/bootstrap/cache/. /bootstrap-cache/
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources.app | nindent 12 }}
+          volumeMounts:
+            - { name: public, mountPath: /public }
+            - { name: bootstrap-cache, mountPath: /bootstrap-cache }
+        {{- if .Values.migrations.enabled }}
+        # Apply schema migrations before php-fpm starts. If the database is
+        # not ready yet this exits non-zero and the kubelet retries with backoff.
+        - name: migrate
+          image: {{ $appImage }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["php", "artisan", "migrate", "--force", "--no-interaction"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources.app | nindent 12 }}
+          {{- include "bookstack.appEnv" (dict "ctx" $ "useS3" $useS3) | nindent 10 }}
+          {{- include "bookstack.appMounts" . | nindent 10 }}
+        {{- end }}
+
+      containers:
+        - name: bookstack
+          image: {{ $appImage }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources.app | nindent 12 }}
+          {{- include "bookstack.appEnv" (dict "ctx" $ "useS3" $useS3) | nindent 10 }}
+          {{- include "bookstack.appMounts" . | nindent 10 }}
+          # php-fpm has no network listener outside the pod; liveness reaches
+          # it through nginx's health server (same network namespace).
+          livenessProbe:
+            httpGet:
+              path: /fpm-ping
+              port: health
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+
+        - name: nginx
+          image: {{ include "bookstack.imageRef" (dict "image" .Values.nginx.image "default" "") }}
+          imagePullPolicy: {{ .Values.nginx.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources.nginx | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.nginx.port }}
+              protocol: TCP
+            - name: health
+              containerPort: {{ .Values.probes.healthPort }}
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          # BookStack's /status checks the database, cache and session store.
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          volumeMounts:
+            - { name: public, mountPath: /var/www/bookstack/public, readOnly: true }
+            - { name: data, mountPath: /var/www/bookstack/public/uploads, subPath: public-uploads, readOnly: true }
+            - { name: nginx-conf, mountPath: /etc/nginx/conf.d, readOnly: true }
+            - { name: nginx-tmp, mountPath: /tmp }
+
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "bookstack.pvcName" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: public
+          emptyDir: {}
+        - name: bootstrap-cache
+          emptyDir: {}
+        - name: app-tmp
+          emptyDir: {}
+        - name: nginx-tmp
+          emptyDir: {}
+        - name: nginx-conf
+          configMap:
+            name: {{ $fullname }}-nginx
+        - name: php-conf
+          configMap:
+            name: {{ $fullname }}-php
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

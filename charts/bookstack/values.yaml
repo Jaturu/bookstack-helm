@@ -1,0 +1,389 @@
+## BookStack Helm chart – default values.
+## Every key is documented here; override only what you need.
+
+# -- Override the chart name used in resource names.
+nameOverride: ""
+# -- Override the full resource name prefix (default: <release>-<chart>).
+fullnameOverride: ""
+
+## =============================================================================
+## Images
+## =============================================================================
+
+## BookStack php-fpm image (built from image/ in this repo).
+image:
+  # -- Image repository.
+  repository: ghcr.io/jaturu/bookstack
+  # -- Defaults to the chart's appVersion when empty.
+  tag: ""
+  # -- Optional image digest (sha256:...). When set, takes precedence over tag.
+  digest: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Pull secrets applied to every pod in the release.
+imagePullSecrets: []
+
+## nginx sidecar: serves static assets from public/ and proxies PHP requests to
+## php-fpm on 127.0.0.1:9000 inside the same pod.
+nginx:
+  image:
+    # -- nginx sidecar image repository.
+    repository: docker.io/nginxinc/nginx-unprivileged
+    # -- nginx sidecar image tag (1.30 = current stable branch).
+    tag: "1.30-alpine"
+    # -- Optional nginx image digest (sha256:...). Takes precedence over tag.
+    digest: ""
+    # -- nginx image pull policy.
+    pullPolicy: IfNotPresent
+  # -- Container port nginx listens on (unprivileged, >1024).
+  port: 8080
+
+## =============================================================================
+## BookStack application
+## =============================================================================
+
+bookstack:
+  # -- Public base URL, including scheme, no trailing slash. REQUIRED.
+  # BookStack uses this for every generated link and redirect.
+  # Example: https://wiki.example.com
+  appUrl: ""
+
+  ## Laravel application key (APP_KEY). Encrypts sessions and stored secrets
+  ## (e.g. MFA data) – losing or changing it invalidates them.
+  appKey:
+    # -- Use an existing Secret instead of the chart-managed one.
+    existingSecret: ""
+    # -- Key inside the Secret holding the value (format: base64:<32 bytes>).
+    secretKey: APP_KEY
+    ## When existingSecret is empty, the chart creates a Secret with a random
+    ## key on first install and reuses it on upgrades (looked up in-cluster and
+    ## annotated helm.sh/resource-policy: keep, so `helm uninstall` leaves it).
+
+  # -- Upload storage mode for images and attachments.
+  #   local_secure_restricted – served via BookStack with per-item permission
+  #                              checks (default)
+  #   local_secure            – served via BookStack, login required only
+  #   local                   – images public under /uploads
+  #   s3                      – S3-compatible bucket (images public by URL);
+  #                              configure under bookstack.s3
+  storageType: local_secure_restricted
+  # -- Optional per-type overrides (STORAGE_IMAGE_TYPE / STORAGE_ATTACHMENT_TYPE).
+  # Empty = use storageType.
+  storageImageType: ""
+  # -- Override storage for attachments only (STORAGE_ATTACHMENT_TYPE). Empty = storageType.
+  storageAttachmentType: ""
+
+  # -- Upload size limit in MB. Single source for every limit inside the pod:
+  # BookStack's FILE_UPLOAD_SIZE_LIMIT, PHP upload_max_filesize (N M) and
+  # post_max_size (N+5 M), and nginx client_max_body_size (N+5 m). The
+  # Gateway / Ingress in front of the pod must allow at least N+5 MB too.
+  uploadLimitMB: 50
+
+  # -- Application timezone (APP_TIMEZONE).
+  timezone: UTC
+
+  # -- Default UI language (APP_LANG).
+  lang: en
+
+  # -- Reverse proxies whose X-Forwarded-* headers are trusted (APP_PROXIES).
+  # Comma-separated CIDRs, or "*" to trust any. Set this to the gateway/ingress
+  # pod network so BookStack sees the real scheme and client IP.
+  trustedProxies: ""
+
+  # -- Additional BookStack .env settings as plain key/value pairs, rendered
+  # into a ConfigMap. Use for anything not modelled above (MAIL_*, AUTH_METHOD,
+  # OIDC_*, ...). Secret values belong in extraEnvFrom / extraEnv instead.
+  # See https://github.com/BookStackApp/BookStack/blob/release/.env.example.complete
+  env: {}
+
+  # -- Extra container env entries (full EnvVar objects, e.g. secretKeyRef).
+  extraEnv: []
+
+  # -- Extra envFrom sources (whole Secrets/ConfigMaps).
+  extraEnvFrom: []
+
+  ## S3-compatible storage – used only when storageType (or a per-type override)
+  ## is "s3". Setting endpoint turns on path-style addressing in BookStack,
+  ## which Ceph RGW / MinIO need.
+  s3:
+    # -- Bucket name (STORAGE_S3_BUCKET). Required when S3 storage is used.
+    bucket: ""
+    # -- Bucket region (STORAGE_S3_REGION). Any value works for Ceph RGW / MinIO.
+    region: us-east-1
+    # -- Custom endpoint URL for non-AWS S3 (e.g. http://rook-ceph-rgw.rook-ceph.svc).
+    endpoint: ""
+    # -- Public base URL images are fetched from (STORAGE_URL). Must be
+    # reachable by users' browsers. Empty = derived by BookStack.
+    url: ""
+    # -- Secret holding the access key pair. Key names default to the ones a
+    # Rook/Ceph ObjectBucketClaim Secret uses, so an OBC Secret works directly.
+    existingSecret: ""
+    # -- Key in s3.existingSecret holding the access key ID.
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    # -- Key in s3.existingSecret holding the secret access key.
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+
+## =============================================================================
+## PHP
+## =============================================================================
+
+## The chart renders one ini file (upload limits derived from
+## bookstack.uploadLimitMB, then php.extraIni) into a ConfigMap mounted at
+## /etc/bookstack/php.d in the php-fpm and init containers. The image scans
+## that directory after its own settings, so these values win.
+php:
+  # -- Extra PHP ini settings, appended after the derived upload limits.
+  # Do not set upload_max_filesize or post_max_size here; use
+  # bookstack.uploadLimitMB. Example:
+  #   memory_limit = 512M
+  #   max_execution_time = 300
+  extraIni: ""
+
+## =============================================================================
+## Database
+## =============================================================================
+
+## External MySQL 8.0+ / MariaDB 10.6+ – used when mariadb.enabled is false.
+externalDatabase:
+  # -- Database hostname. Required when mariadb.enabled=false.
+  host: ""
+  # -- Database port.
+  port: 3306
+  # -- Database name.
+  database: bookstack
+  # -- Database user.
+  username: bookstack
+  # -- Secret holding the user's password. REQUIRED when mariadb.enabled=false.
+  existingSecret: ""
+  # -- Key in externalDatabase.existingSecret holding the password.
+  passwordKey: password
+
+## Built-in MariaDB (official mariadb image, single-replica StatefulSet).
+mariadb:
+  # -- Deploy MariaDB with the chart. Set false to use externalDatabase.
+  enabled: true
+
+  image:
+    # -- MariaDB image repository (official image).
+    repository: docker.io/library/mariadb
+    # -- 11.8 is the current MariaDB LTS series; the tag follows its patches.
+    tag: "11.8"
+    # -- Optional MariaDB image digest (sha256:...). Takes precedence over tag.
+    digest: ""
+    # -- MariaDB image pull policy.
+    pullPolicy: IfNotPresent
+
+  auth:
+    # -- Database created on first start (MARIADB_DATABASE).
+    database: bookstack
+    # -- User created on first start (MARIADB_USER).
+    username: bookstack
+    # -- Use an existing Secret for the passwords instead of the chart-managed
+    # one (generated on first install, reused on upgrades, kept on uninstall).
+    existingSecret: ""
+    # -- Key in the MariaDB Secret holding the BookStack user's password.
+    passwordKey: mariadb-password
+    # -- Key in the MariaDB Secret holding the root password.
+    rootPasswordKey: mariadb-root-password
+
+  persistence:
+    # -- StorageClass for the data volume. Empty = cluster default.
+    storageClass: ""
+    # -- Access modes for the data volume.
+    accessModes:
+      - ReadWriteOnce
+    # -- Size of the data volume.
+    size: 8Gi
+
+  # -- Extra server settings, rendered into a ConfigMap mounted at
+  # /etc/mysql/conf.d/zz-chart.cnf.
+  config: |
+    [mysqld]
+    character-set-server  = utf8mb4
+    collation-server      = utf8mb4_unicode_ci
+    skip-name-resolve
+    innodb_buffer_pool_size = 256M
+
+  # -- MariaDB container resources. Raise the memory limit with innodb_buffer_pool_size.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 384Mi
+    limits:
+      memory: 768Mi
+
+  # -- MariaDB pod security context. uid/gid 999 is the mysql user in the official image.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+  # -- MariaDB container security context. /var/lib/mysql, /run/mysqld and /tmp are the only writable paths.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+
+  # -- Node selector for the MariaDB pod.
+  nodeSelector: {}
+  # -- Tolerations for the MariaDB pod.
+  tolerations: []
+  # -- Affinity rules for the MariaDB pod.
+  affinity: {}
+
+## =============================================================================
+## BookStack persistence
+## =============================================================================
+
+## One volume, mounted twice by subPath:
+##   storage/         -> php-fpm only (secure uploads, sessions, cache, logs)
+##   public-uploads/  -> php-fpm (rw) and nginx (ro) for system images (logo)
+## Both containers are in one pod, so ReadWriteOnce is sufficient.
+persistence:
+  # -- Persist uploads and storage/. When false an emptyDir is used (data lost on pod restart).
+  enabled: true
+  # -- Use an existing PVC instead of creating one.
+  existingClaim: ""
+  # -- StorageClass for the data volume. Empty = cluster default.
+  storageClass: ""
+  # -- Access modes for the data volume.
+  accessModes:
+    - ReadWriteOnce
+  # -- Size of the data volume.
+  size: 10Gi
+  # -- Extra annotations on the PVC (helm.sh/resource-policy: keep is always set).
+  annotations: {}
+
+## =============================================================================
+## Networking
+## =============================================================================
+
+service:
+  # -- Service type.
+  type: ClusterIP
+  # -- Service port (targets nginx's http port).
+  port: 80
+  # -- Service annotations.
+  annotations: {}
+
+## Gateway API HTTPRoute. TLS terminates at the Gateway; the backend is plain
+## HTTP to nginx.
+httpRoute:
+  # -- Create a Gateway API HTTPRoute.
+  enabled: false
+  # -- HTTPRoute annotations.
+  annotations: {}
+  # -- Gateways to attach to, e.g.
+  #   - name: my-gateway
+  #     namespace: gateway-system
+  #     sectionName: https
+  parentRefs: []
+  # -- Hostnames, e.g. [wiki.example.com]. Usually matches appUrl.
+  hostnames: []
+
+## Kubernetes Ingress – optional alternative to httpRoute (both may be enabled).
+## TLS terminates at the ingress controller; the backend is plain HTTP to nginx.
+ingress:
+  # -- Create an Ingress.
+  enabled: false
+  # -- IngressClass to use. Empty = cluster default class.
+  className: ""
+  # -- Controller-specific annotations. Most controllers cap request bodies
+  # below the 50 MB upload limit by default – raise theirs too, e.g.
+  #   nginx.ingress.kubernetes.io/proxy-body-size: 55m
+  #   cert-manager.io/cluster-issuer: my-issuer
+  annotations: {}
+  # -- Hostnames, e.g. [wiki.example.com]. Usually matches appUrl.
+  hosts: []
+  # -- Path matched on every host.
+  path: /
+  # -- Ingress pathType.
+  pathType: Prefix
+  # -- TLS blocks, e.g.
+  #   - secretName: wiki-tls
+  #     hosts: [wiki.example.com]
+  tls: []
+
+## =============================================================================
+## BookStack pod
+## =============================================================================
+
+# -- Fixed at 1: the data volume is ReadWriteOnce and the Deployment uses the
+# Recreate strategy so the old pod releases it before the new one starts.
+replicaCount: 1
+
+## Database migrations run in an init container (php artisan migrate --force)
+## before php-fpm starts, so an image upgrade migrates the schema first.
+migrations:
+  # -- Run database migrations in an init container before BookStack starts.
+  enabled: true
+
+resources:
+  ## php-fpm container
+  # -- php-fpm container resources (also used by the init containers).
+  app:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      memory: 512Mi
+  # -- nginx sidecar resources.
+  nginx:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+# -- Pod-level security context. uid/gid 33 is www-data in the BookStack image.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 33
+  runAsGroup: 33
+  fsGroup: 33
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container security context (applied to php-fpm, nginx and init
+# containers). The root filesystem is read-only; the chart mounts emptyDirs
+# for /tmp and bootstrap/cache.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+## Probes. Liveness checks php-fpm through nginx on a separate health port
+## (not exposed by the Service); readiness uses BookStack's /status endpoint,
+## which also checks the database, cache and session store.
+probes:
+  # -- Port of nginx's health server (/fpm-ping). Not exposed by the Service.
+  healthPort: 8081
+  # -- Liveness probe timings (php-fpm via /fpm-ping; nginx via TCP).
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # -- Readiness probe timings (BookStack /status: database, cache, session).
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# -- Extra annotations on the BookStack pod.
+podAnnotations: {}
+# -- Extra labels on the BookStack pod.
+podLabels: {}
+# -- Node selector for the BookStack pod.
+nodeSelector: {}
+# -- Tolerations for the BookStack pod.
+tolerations: []
+# -- Affinity rules for the BookStack pod.
+affinity: {}
