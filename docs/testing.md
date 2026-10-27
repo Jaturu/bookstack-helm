@@ -101,6 +101,14 @@ helm test wiki -n bookstack --logs
 
 ## CI
 
+[`.github/workflows/ci.yaml`](../.github/workflows/ci.yaml) runs on every pull
+request and push to `main`:
+
+| Job | Runs |
+|-----|------|
+| `chart` | lint, unit tests, schema validation, chart README check; on pull requests also `ct lint` (Chart.yaml schema, yamllint, **chart version bump required** when the chart changed) |
+| `image (amd64)`, `image (arm64)` | Native build and the image contract tests on each architecture |
+| `install on kind` | `tests/install.sh`, after the other jobs pass |
+
 `ct.yaml` and `charts/bookstack/ci/default-values.yaml` configure
-[chart-testing](https://github.com/helm/chart-testing) for the CI pipeline,
-which runs the same layers on every pull request.
+[chart-testing](https://github.com/helm/chart-testing).

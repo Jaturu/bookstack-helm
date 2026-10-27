@@ -116,6 +116,39 @@ Other build args, rarely changed:
    [Testing](testing.md)).
 5. Commit. CI builds and publishes the image and the chart.
 
+## Publishing
+
+`.github/workflows/release.yaml` runs on every merge to `main`:
+
+| Step | Result |
+|------|--------|
+| Build | One native build per architecture (`ubuntu-24.04` amd64, `ubuntu-24.04-arm` arm64), pushed by digest |
+| Tag | Multi-arch tags `<appVersion>`, `<appVersion>-<commit>` and `latest` |
+| Sign | `cosign sign` keyless, with the workflow's GitHub OIDC identity |
+| Attest | SLSA build provenance and an SPDX SBOM, pushed to the registry |
+
+The image is rebuilt when `image/` or `appVersion` changes, when the tag is
+missing from the registry, or on a manual run with **force-image**. The
+`<appVersion>` tag moves to each rebuild; pin `<appVersion>-<commit>` or the
+digest (`image.digest`) for a fixed image.
+
+## Verifying published artifacts
+
+```console
+# Signature: made by this repository's release workflow on main
+cosign verify ghcr.io/jaturu/bookstack:v26.09.2 \
+  --certificate-identity-regexp '^https://github\.com/Jaturu/bookstack-helm/\.github/workflows/release\.yaml@refs/heads/main$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+# Build provenance and SBOM attestations
+gh attestation verify oci://ghcr.io/jaturu/bookstack:v26.09.2 --owner Jaturu
+
+# OCI chart signature
+cosign verify ghcr.io/jaturu/charts/bookstack:0.1.0 \
+  --certificate-identity-regexp '^https://github\.com/Jaturu/bookstack-helm/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 ## Using your own image
 
 `image.repository` / `image.tag` can point at another image only if it keeps

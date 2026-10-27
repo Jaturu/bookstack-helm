@@ -1,0 +1,232 @@
+# Publish on merge to main:
+#   image -> ghcr.io/jaturu/bookstack:<appVersion> (multi-arch, cosign-signed,
+#            SLSA provenance + SBOM attestations)
+#   chart -> GitHub release + gh-pages Helm repo index, and
+#            oci://ghcr.io/jaturu/charts/bookstack (cosign-signed)
+# A chart version that is already published is skipped, so only a version
+# bump in Chart.yaml releases a chart.
+name: release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - "image/**"
+  workflow_dispatch:
+    inputs:
+      force-image:
+        description: Rebuild and push the image even if image/ is unchanged
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/jaturu/bookstack
+  CHART_REPO: oci://ghcr.io/jaturu/charts
+  HELM_VERSION: v4.3.1
+
+jobs:
+  # ------------------------------------------------------ what to publish
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      app-version: ${{ steps.v.outputs.app }}
+      build-image: ${{ steps.v.outputs.build }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - id: v
+        env:
+          BEFORE: ${{ github.event.before }}
+          FORCE: ${{ inputs.force-image }}
+        run: |
+          app=$(make -s version)
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          build=false
+          # Rebuild when forced, when image/ or appVersion changed, or when the
+          # tag does not exist in the registry yet.
+          if [ "$FORCE" = "true" ]; then
+            build=true
+          elif [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            build=true
+          elif ! git diff --quiet "$BEFORE" "$GITHUB_SHA" -- image/; then
+            build=true
+          elif git diff "$BEFORE" "$GITHUB_SHA" -- charts/bookstack/Chart.yaml | grep -q '^[-+]appVersion:'; then
+            build=true
+          elif ! docker buildx imagetools inspect "$IMAGE:$app" >/dev/null 2>&1; then
+            build=true
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "BookStack $app - build image: $build" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------- image: per-arch builds
+  image-build:
+    needs: plan
+    if: needs.plan.outputs.build-image == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/login-action@v4.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: image
+          platforms: linux/${{ matrix.arch }}
+          build-args: BOOKSTACK_VERSION=${{ needs.plan.outputs.app-version }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ------------------------- image: multi-arch tag, sign, attest, SBOM
+  image-publish:
+    needs: [plan, image-build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write       # keyless signing / attestations
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/login-action@v4.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create multi-arch tags
+        id: manifest
+        env:
+          APP: ${{ needs.plan.outputs.app-version }}
+        run: |
+          short=${GITHUB_SHA::7}
+          cd /tmp/digests
+          docker buildx imagetools create \
+            -t "$IMAGE:$APP" -t "$IMAGE:$APP-$short" -t "$IMAGE:latest" \
+            $(printf "$IMAGE@sha256:%s " *)
+          digest=$(docker buildx imagetools inspect "$IMAGE:$APP-$short" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Image: \`$IMAGE:$APP\` = \`$digest\`" >> "$GITHUB_STEP_SUMMARY"
+      - uses: sigstore/cosign-installer@v4.1.2
+      - name: Sign image (keyless)
+        run: cosign sign --yes "$IMAGE@${{ steps.manifest.outputs.digest }}"
+      - name: Build provenance attestation
+        uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0.24.3
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.manifest.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+      - name: SBOM attestation
+        uses: actions/attest-sbom@v4.1.0
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          sbom-path: sbom.spdx.json
+          push-to-registry: true
+
+  # ------------------------------------------------------------- chart
+  chart:
+    needs: [plan, image-publish]
+    # Run when the image was published or not needed at all.
+    if: always() && needs.plan.result == 'success' && (needs.image-publish.result == 'success' || needs.image-publish.result == 'skipped')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write       # GitHub release + gh-pages
+      packages: write       # OCI chart
+      id-token: write       # keyless signing
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: azure/setup-helm@v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Configure git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Release to GitHub + gh-pages index
+        id: cr
+        uses: helm/chart-releaser-action@v1.7.0
+        with:
+          charts_dir: charts
+          skip_existing: true
+          pages_branch: gh-pages
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push chart to OCI (if this version is new)
+        id: oci
+        run: |
+          version=$(awk '/^version:/ {print $2}' charts/bookstack/Chart.yaml)
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          if helm show chart "$CHART_REPO/bookstack" --version "$version" >/dev/null 2>&1; then
+            echo "Chart $version already in OCI registry - skipped" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          helm package charts/bookstack -d dist
+          out=$(helm push "dist/bookstack-$version.tgz" "$CHART_REPO" 2>&1); echo "$out"
+          digest=$(echo "$out" | awk '/^Digest:/ {print $2}')
+          [ -n "$digest" ] || { echo "no digest in helm push output" >&2; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Chart: \`${CHART_REPO#oci://}/bookstack:$version\` = \`$digest\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: sigstore/cosign-installer@v4.1.2
+        if: steps.oci.outputs.digest != ''
+      - name: Sign OCI chart (keyless)
+        if: steps.oci.outputs.digest != ''
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | cosign login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          cosign sign --yes "${CHART_REPO#oci://}/bookstack@${{ steps.oci.outputs.digest }}"

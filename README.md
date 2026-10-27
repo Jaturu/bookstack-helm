@@ -6,8 +6,12 @@ on Kubernetes: non-root, read-only root filesystems, and compatible with the
 
 | Component | Location | Published as |
 |-----------|----------|--------------|
-| Helm chart | [`charts/bookstack`](charts/bookstack) | Helm repository `https://jaturu.github.io/bookstack-helm` |
-| Container image (php-fpm) | [`image/`](image) | `ghcr.io/jaturu/bookstack:<BookStack version>` |
+| Helm chart | [`charts/bookstack`](charts/bookstack) | Helm repository `https://jaturu.github.io/bookstack-helm` and `oci://ghcr.io/jaturu/charts/bookstack` |
+| Container image (php-fpm) | [`image/`](image) | `ghcr.io/jaturu/bookstack:<BookStack version>` (amd64 + arm64) |
+
+Images and OCI charts are signed with cosign (keyless, GitHub OIDC) and carry
+SLSA build provenance and SBOM attestations. See
+[Image → Verifying](docs/image.md#verifying-published-artifacts).
 
 ## Quick start
 
@@ -56,6 +60,10 @@ make test-install # end-to-end install on a throwaway kind cluster
 make lint         # helm lint
 make docs         # regenerate charts/bookstack/README.md (needs helm-docs)
 ```
+
+CI (`.github/workflows/ci.yaml`) runs the same tests on every pull request.
+Merging to `main` runs `release.yaml`, which publishes the image when `image/`
+or `appVersion` changed, and the chart when its `version` was bumped.
 
 `charts/bookstack/README.md` is generated. Edit `README.md.gotmpl` or the
 `# --` comments in `values.yaml`, then run `make docs`.

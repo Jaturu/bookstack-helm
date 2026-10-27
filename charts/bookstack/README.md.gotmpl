@@ -34,6 +34,14 @@ helm install wiki bookstack/bookstack \
   --set bookstack.appUrl=https://wiki.example.com
 ```
 
+Or install straight from the OCI registry, without `helm repo add`:
+
+```console
+helm install wiki oci://ghcr.io/jaturu/charts/bookstack --version {{ template "chart.version" . }} \
+  --namespace bookstack --create-namespace \
+  --set bookstack.appUrl=https://wiki.example.com
+```
+
 `bookstack.appUrl` is the only required value. The first login is
 `admin@admin.com` / `password` — change it immediately.
 

@@ -1,0 +1,111 @@
+# Pull-request and main-branch checks: the same layers as `make test-all`.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HELM_VERSION: v4.3.1
+  HELM_UNITTEST_VERSION: v1.0.3
+  HELM_DOCS_VERSION: 1.14.2
+  KUBECONFORM_VERSION: v0.8.0
+  KIND_VERSION: v0.33.0
+
+jobs:
+  # ---------------------------------------------------------------- chart
+  chart:
+    name: lint, unit, schema, docs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0   # ct lint compares against the target branch
+
+      - uses: azure/setup-helm@v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install test tools
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest \
+            --version "$HELM_UNITTEST_VERSION" --verify=false
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | sudo tar xz -C /usr/local/bin kubeconform
+          curl -fsSL "https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar xz -C /usr/local/bin helm-docs
+
+      - name: Lint
+        run: make lint
+
+      - name: Template unit tests
+        run: make test-unit
+
+      - name: Schema validation
+        run: make test-schema
+
+      - name: Chart README is up to date
+        run: make docs-check
+
+      - name: ct lint (version bump, Chart.yaml schema, yamllint)
+        if: github.event_name == 'pull_request'
+        uses: helm/chart-testing-action@v2.9.0
+      - if: github.event_name == 'pull_request'
+        run: ct lint --config ct.yaml --target-branch "${{ github.base_ref }}"
+
+  # ---------------------------------------------------------------- image
+  image:
+    name: image (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Read BookStack version from Chart.yaml
+        id: v
+        run: echo "version=$(make -s version)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4.4.1
+      - name: Build (native ${{ matrix.arch }})
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: image
+          build-args: BOOKSTACK_VERSION=${{ steps.v.outputs.version }}
+          tags: bookstack:dev
+          load: true
+          provenance: false
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
+      - name: Image contract tests
+        run: IMAGE=bookstack:dev tests/image-test.sh
+
+  # -------------------------------------------------------------- install
+  install:
+    name: install on kind
+    needs: [chart, image]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: azure/setup-helm@v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Install kind
+        run: |
+          curl -fsSLo kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          sudo install kind /usr/local/bin/kind && rm kind
+      - name: Install test (build, kind, helm test, upgrade, uninstall)
+        run: tests/install.sh
