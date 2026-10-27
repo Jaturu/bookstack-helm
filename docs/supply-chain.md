@@ -127,8 +127,12 @@ with the rule that hid them. The release report and status page show them all.
 
 **The status page uses the same split.** The weekly verdict turns red only
 for High or Critical findings with a fix available. Unfixed High or Critical
-findings give a yellow badge and are listed, so they stay visible. A report
-with no fixability data counts every finding as fixable.
+findings give a yellow badge and are listed, so they stay visible. A fix
+known to either scanner makes a vulnerability fixable.
+
+The page and badge count distinct vulnerabilities. Grype and Trivy on two
+platforms name most CVEs four times; each is counted once, at the higher
+severity the scanners give it, and each platform's table lists it once.
 
 ## Suppressing a finding
 

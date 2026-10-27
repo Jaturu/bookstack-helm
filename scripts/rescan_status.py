@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from scripts.render_release_report import (
+    SEVERITY_ORDER,
     PlatformSummary,
     cell,
     summarize_platform,
@@ -25,29 +26,65 @@ from scripts.render_release_report import (
 ACTIONABLE = ("Critical", "High")
 
 
-def _total(summaries: list[PlatformSummary], severities: tuple[str, ...]) -> int:
-    return sum(
-        counts.get(name, 0)
-        for summary in summaries
-        for counts in (summary.grype["by_severity"], summary.trivy["by_severity"])
-        for name in severities
+def _rank(severity: str) -> int:
+    try:
+        return SEVERITY_ORDER.index(severity)
+    except ValueError:
+        return len(SEVERITY_ORDER)
+
+
+def _merge(findings: list[dict]) -> list[dict]:
+    """One entry per vulnerability ID, however many reports name it.
+
+    Two scanners on two platforms report most CVEs four times. Where the
+    reports disagree, the entry takes the higher severity and any fix one of
+    them knows, because either scanner's gate fails on what it sees.
+    """
+    merged: dict[str, dict] = {}
+    for item in findings:
+        entry = merged.get(item["id"])
+        if entry is None:
+            merged[item["id"]] = {
+                "id": item["id"],
+                "severity": item["severity"],
+                "packages": list(item["packages"]),
+                "fix": item["fix"],
+            }
+            continue
+        if _rank(item["severity"]) < _rank(entry["severity"]):
+            entry["severity"] = item["severity"]
+        for package in item["packages"]:
+            if package not in entry["packages"]:
+                entry["packages"].append(package)
+        if item["fix"] and not entry["fix"]:
+            entry["fix"] = item["fix"]
+    for entry in merged.values():
+        entry["packages"].sort()
+    return sorted(merged.values(), key=lambda e: (_rank(e["severity"]), e["id"]))
+
+
+def _distinct(summaries: list[PlatformSummary]) -> list[dict]:
+    return _merge(
+        [
+            item
+            for summary in summaries
+            for scanner in (summary.grype, summary.trivy)
+            for item in scanner["findings"]
+        ]
     )
 
 
-def _fixable(summaries: list[PlatformSummary], severities: tuple[str, ...]) -> int:
-    """Findings at these severities with a fix available to move to.
+def _counts(summaries: list[PlatformSummary]) -> tuple[int, int, int]:
+    """Distinct vulnerabilities: (fixable High+, unfixed High+, everything).
 
     On a Debian base, findings Debian has marked won't-fix or not yet fixed
     are the steady state: nothing can be upgraded, so they are recorded but
-    not actionable. A summary without fixability information counts every
-    finding as fixable, which errs towards raising the alarm.
+    not actionable. Only a fix available to move to is.
     """
-    return sum(
-        scanner.get("fixable_by_severity", scanner["by_severity"]).get(name, 0)
-        for summary in summaries
-        for scanner in (summary.grype, summary.trivy)
-        for name in severities
-    )
+    distinct = _distinct(summaries)
+    high = [e for e in distinct if e["severity"] in ACTIONABLE]
+    fixable = sum(1 for e in high if e["fix"])
+    return fixable, len(high) - fixable, len(distinct)
 
 
 def verdict(summaries: list[PlatformSummary]) -> str:
@@ -56,18 +93,12 @@ def verdict(summaries: list[PlatformSummary]) -> str:
     Suppressed findings are excluded because they are decisions already
     recorded, not open work.
     """
-    actionable = _fixable(summaries, ACTIONABLE)
+    actionable, unfixed, everything = _counts(summaries)
     if actionable:
         return (
             f"Action needed: {actionable} High or Critical finding(s) with a "
             "fix available against the current release."
         )
-    everything = sum(
-        sum(counts.values())
-        for summary in summaries
-        for counts in (summary.grype["by_severity"], summary.trivy["by_severity"])
-    )
-    unfixed = _total(summaries, ACTIONABLE)
     if unfixed:
         lower = everything - unfixed
         tail = f", and {lower} lower-severity finding(s)" if lower else ""
@@ -96,13 +127,7 @@ def scanned_at(summaries: list[PlatformSummary]) -> str:
 
 def badge(summaries: list[PlatformSummary]) -> dict:
     """The verdict in the shields.io endpoint schema, for the README badge."""
-    actionable = _fixable(summaries, ACTIONABLE)
-    unfixed = _total(summaries, ACTIONABLE)
-    everything = sum(
-        sum(counts.values())
-        for summary in summaries
-        for counts in (summary.grype["by_severity"], summary.trivy["by_severity"])
-    )
+    actionable, unfixed, everything = _counts(summaries)
     if actionable:
         message, color = f"{actionable} High or Critical, action needed", "red"
     elif unfixed:
@@ -144,7 +169,9 @@ def render_status(
         "attached to the published image, so it reflects what the scanners "
         "know now rather than what they knew at build time. It is generated "
         "output and is not signed. The per-release pages under Releases are "
-        "the build-time snapshots and do not change."
+        "the build-time snapshots and do not change. Counts are of distinct "
+        "vulnerabilities: one reported by both scanners, or on several "
+        "platforms, is counted once, at the higher severity either scanner gives."
     )
 
     for summary in summaries:
@@ -154,7 +181,7 @@ def render_status(
         out.append(f"Image digest: `{summary.digest}`")
         out.append("")
 
-        findings = summary.grype["findings"] + summary.trivy["findings"]
+        findings = _merge(summary.grype["findings"] + summary.trivy["findings"])
         if not findings:
             out.append("No findings.")
         else:

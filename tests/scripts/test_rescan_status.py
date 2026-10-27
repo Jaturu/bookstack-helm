@@ -27,10 +27,45 @@ def _summary(slug="linux-amd64", **overrides):
     return PlatformSummary(**defaults)
 
 
-def _grype(by_severity, findings=None, suppressed=None):
+def _findings(by_severity, fixable=None, prefix="CVE-G"):
+    """Synthesize grouped findings matching the counts.
+
+    Every finding has a fix unless ``fixable`` says how many per severity do.
+    IDs depend only on prefix, severity and position, so two calls with the
+    same prefix describe the same vulnerabilities.
+    """
+    out = []
+    for severity, count in by_severity.items():
+        with_fix = count if fixable is None else fixable.get(severity, 0)
+        for i in range(count):
+            out.append(
+                {
+                    "id": f"{prefix}-{severity}-{i}",
+                    "severity": severity,
+                    "packages": [f"pkg-{severity.lower()}-{i} 1.0"],
+                    "fix": "1.1" if i < with_fix else "",
+                }
+            )
+    return out
+
+
+def _finding(vuln_id, severity, fix="", package="pkg 1.0"):
+    return {"id": vuln_id, "severity": severity, "packages": [package], "fix": fix}
+
+
+def _trivy(by_severity=None, fixable=None, findings=None, prefix="CVE-T"):
+    by_severity = by_severity or {}
     return {
         "by_severity": by_severity,
-        "findings": findings or [],
+        "findings": findings if findings is not None else _findings(by_severity, fixable, prefix),
+        "scanned": "",
+    }
+
+
+def _grype(by_severity, findings=None, suppressed=None, fixable=None, prefix="CVE-G"):
+    return {
+        "by_severity": by_severity,
+        "findings": findings if findings is not None else _findings(by_severity, fixable, prefix),
         "suppressed": suppressed or [],
         "scanned": "2026-08-05 10:28 UTC",
         "db_built": "2026-08-05 07:04 UTC",
@@ -59,20 +94,19 @@ def test_verdict_counts_critical_as_actionable():
     assert verdict([_summary(grype=_grype({"Critical": 1}))]).startswith("Action needed")
 
 
-def test_verdict_totals_across_platforms():
+def test_verdict_totals_distinct_vulnerabilities_across_platforms():
     out = verdict(
         [
-            _summary("linux-amd64", grype=_grype({"High": 1})),
-            _summary("linux-arm64", grype=_grype({"High": 1})),
+            _summary("linux-amd64", grype=_grype({"High": 1}, prefix="CVE-A")),
+            _summary("linux-arm64", grype=_grype({"High": 1}, prefix="CVE-B")),
         ]
     )
-    assert "2" in out
+    assert out.startswith("Action needed: 2 ")
 
 
 def test_verdict_includes_trivy_findings():
     """Either scanner finding something high is enough to act on."""
-    summary = _summary()
-    summary.trivy = {"by_severity": {"High": 1}, "findings": [], "scanned": ""}
+    summary = _summary(trivy=_trivy({"High": 1}))
     assert verdict([summary]).startswith("Action needed")
 
 
@@ -294,9 +328,7 @@ def test_main_writes_the_badge_beside_the_page(report_dir, tmp_path):
 
 
 def _fixable(by_severity, fixable):
-    data = _grype(by_severity)
-    data["fixable_by_severity"] = fixable
-    return data
+    return _grype(by_severity, fixable=fixable)
 
 
 def test_verdict_does_not_act_on_unfixed_high_findings():
@@ -314,15 +346,8 @@ def test_verdict_acts_on_a_fixable_high_finding_only():
 
 
 def test_verdict_counts_fixable_trivy_findings():
-    summary = _summary(grype=_fixable({}, {}))
-    summary.trivy = {"by_severity": {"Critical": 2}, "fixable_by_severity": {"Critical": 1}, "findings": [], "scanned": ""}
+    summary = _summary(trivy=_trivy({"Critical": 2}, {"Critical": 1}))
     assert verdict([summary]).startswith("Action needed: 1 ")
-
-
-def test_verdict_treats_missing_fixability_as_fixable():
-    """A summary that says nothing about fixability is counted the
-    conservative way, as fixable."""
-    assert verdict([_summary(grype=_grype({"High": 1}))]).startswith("Action needed")
 
 
 def test_badge_is_yellow_for_unfixed_high_findings():
@@ -335,3 +360,66 @@ def test_badge_turns_red_only_for_fixable_findings():
     out = badge([_summary(grype=_fixable({"High": 3}, {"High": 2}))])
     assert out["message"] == "2 High or Critical, action needed"
     assert out["color"] == "red"
+
+
+# --- Counting: each vulnerability once ---------------------------------------
+#
+# Two scanners on two platforms report most CVEs four times. The verdict and
+# badge count each vulnerability ID once, so the number means something.
+
+
+def test_same_cve_from_both_scanners_counts_once():
+    summary = _summary(
+        grype=_grype({}, findings=[_finding("CVE-1", "High")]),
+        trivy=_trivy(findings=[_finding("CVE-1", "High")]),
+    )
+    out = verdict([summary])
+    assert "1 High or Critical" in out
+
+
+def test_same_cve_on_every_platform_counts_once():
+    def one():
+        return _summary(
+            grype=_grype({}, findings=[_finding("CVE-1", "High")]),
+            trivy=_trivy(findings=[_finding("CVE-1", "High")]),
+        )
+
+    summaries = [one(), one()]
+    summaries[1].slug = "linux-arm64"
+    assert badge(summaries)["message"] == "no fixable High or Critical, 1 unfixed"
+
+
+def test_scanners_disagreeing_on_severity_take_the_higher():
+    summary = _summary(
+        grype=_grype({}, findings=[_finding("CVE-1", "Medium")]),
+        trivy=_trivy(findings=[_finding("CVE-1", "High")]),
+    )
+    assert badge([summary])["message"] == "no fixable High or Critical, 1 unfixed"
+
+
+def test_a_fix_from_either_scanner_makes_it_fixable():
+    """If either scanner knows a fix, its gate will fail on it, so the page
+    has to call it actionable too."""
+    summary = _summary(
+        grype=_grype({}, findings=[_finding("CVE-1", "High")]),
+        trivy=_trivy(findings=[_finding("CVE-1", "High", fix="1.2")]),
+    )
+    assert verdict([summary]).startswith("Action needed: 1 ")
+
+
+def test_lower_severity_count_is_distinct_too():
+    summary = _summary(
+        grype=_grype({}, findings=[_finding("CVE-1", "Medium"), _finding("CVE-2", "Low")]),
+        trivy=_trivy(findings=[_finding("CVE-1", "Medium")]),
+    )
+    assert badge([summary])["message"] == "no High or Critical, 2 lower"
+
+
+def test_platform_table_lists_each_cve_once():
+    summary = _summary(
+        grype=_grype({}, findings=[_finding("CVE-1", "Medium", package="libfoo 1.0")]),
+        trivy=_trivy(findings=[_finding("CVE-1", "High", package="libfoo 1.0")]),
+    )
+    out = render_status(image="img", tag="v1", index_digest="sha256:i", summaries=[summary])
+    rows = [line for line in out.splitlines() if line.startswith("| CVE-1 ")]
+    assert rows == ["| CVE-1 | High | libfoo 1.0 | No fix available |"]
