@@ -1,0 +1,15 @@
+# Packaged charts and dependency builds
+*.tgz
+charts/*/charts/
+charts/*/Chart.lock
+
+# Local values / secrets used for testing
+*-overrides.yaml
+*-overrides.json
+*.local.yaml
+.env
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
