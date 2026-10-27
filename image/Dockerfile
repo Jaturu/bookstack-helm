@@ -14,12 +14,14 @@ ARG PHP_PACKAGES="cli curl gd mbstring mysql opcache xml zip"
 
 # ---------------------------------------------------------------------------
 # build: fetch the BookStack release, install PHP dependencies, trim
+#   BOOKSTACK_VERSION has no default: the single source is appVersion in
+#   charts/bookstack/Chart.yaml, passed in by `make image` and CI.
 # ---------------------------------------------------------------------------
 FROM debian:${DEBIAN_SUITE}-slim AS build
 
 ARG PHP_VERSION
 ARG PHP_PACKAGES
-ARG BOOKSTACK_VERSION=v26.09.2
+ARG BOOKSTACK_VERSION
 ARG BOOKSTACK_REPO=https://source.bookstackapp.com/bookstack.git
 
 RUN set -eux; \
@@ -31,6 +33,7 @@ RUN set -eux; \
 COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 
 RUN set -eux; \
+    test -n "${BOOKSTACK_VERSION}" || { echo "BOOKSTACK_VERSION build arg is required (set from Chart.yaml appVersion; use make image)" >&2; exit 1; }; \
     git clone --depth 1 --branch "${BOOKSTACK_VERSION}" "${BOOKSTACK_REPO}" /var/www/bookstack; \
     rm -rf /var/www/bookstack/.git
 
@@ -58,7 +61,7 @@ FROM debian:${DEBIAN_SUITE}-slim AS runtime
 
 ARG PHP_VERSION
 ARG PHP_PACKAGES
-ARG BOOKSTACK_VERSION=v26.09.2
+ARG BOOKSTACK_VERSION
 
 LABEL org.opencontainers.image.title="bookstack" \
       org.opencontainers.image.description="BookStack on Debian php-fpm, non-root" \
@@ -81,6 +84,12 @@ RUN set -eux; \
 COPY php/php-fpm.conf  /etc/php/${PHP_VERSION}/fpm/php-fpm.conf
 COPY php/bookstack.ini /etc/php/${PHP_VERSION}/fpm/conf.d/99-bookstack.ini
 COPY php/bookstack.ini /etc/php/${PHP_VERSION}/cli/conf.d/99-bookstack.ini
+
+# Extra ini directory scanned after the SAPI defaults (a leading ":" appends to
+# the compiled-in conf.d). The Helm chart mounts its generated ini here, so its
+# settings override bookstack.ini without depending on the PHP version path.
+ENV PHP_INI_SCAN_DIR=":/etc/bookstack/php.d"
+RUN mkdir -p /etc/bookstack/php.d
 
 # Application code is root-owned and read-only to the runtime user.
 COPY --from=build /var/www/bookstack /var/www/bookstack
