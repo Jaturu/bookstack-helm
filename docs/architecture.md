@@ -49,9 +49,11 @@ port.
 ## Startup sequence
 
 1. **`copy-assets`** copies `public/` (compiled CSS/JS, icons) and the Laravel
-   `bootstrap/cache` from the image into `emptyDir` volumes. nginx serves
-   `public/` from its own container. `bootstrap/cache` must be writable while
-   the root filesystem is read-only.
+   `bootstrap/cache` from the image into `emptyDir` volumes, and seeds the
+   `storage/` directory structure onto the PVC without overwriting anything
+   already there. nginx serves `public/` from its own container;
+   `bootstrap/cache` and `storage/` must be writable while the root filesystem
+   is read-only.
 2. **`migrate`** runs `php artisan migrate --force`. If the database is not
    reachable yet (for example the built-in MariaDB is still initialising), it
    exits non-zero and the kubelet retries it with backoff. No separate wait
@@ -80,6 +82,7 @@ BookStack honours them for the proxies listed in `bookstack.trustedProxies`.
 | Volume | Backing | Mounted in | Path | Mode |
 |--------|---------|------------|------|------|
 | `data` → subPath `storage` | PVC | bookstack, migrate | `/var/www/bookstack/storage` | rw |
+| `data` → subPath `storage` | PVC | copy-assets | `/storage` | rw (seeding only) |
 | `data` → subPath `public-uploads` | PVC | bookstack, migrate | `/var/www/bookstack/public/uploads` | rw |
 | `data` → subPath `public-uploads` | PVC | nginx | `/var/www/bookstack/public/uploads` | ro |
 | `public` | emptyDir | nginx | `/var/www/bookstack/public` | ro |
@@ -104,8 +107,8 @@ refuses `replicaCount` values other than 1.
 
 Every container, including init containers and MariaDB, runs with:
 
-- `runAsNonRoot: true`: BookStack as uid/gid 33 (`www-data`), MariaDB as
-  999 (`mysql`), nginx as the unprivileged image's user;
+- `runAsNonRoot: true`: the BookStack pod (php-fpm, nginx and init
+  containers) as uid/gid 33 (`www-data`), MariaDB as 999 (`mysql`);
 - `readOnlyRootFilesystem: true`, with writable paths limited to the volumes
   listed above;
 - `allowPrivilegeEscalation: false`, all capabilities dropped,

@@ -1,0 +1,8 @@
+# Not part of the packaged chart
+tests/
+ci/
+README.md.gotmpl
+*.orig
+*.rej
+*~
+.DS_Store

@@ -42,17 +42,23 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
 
       initContainers:
-        # Copy the image's public/ assets and Laravel bootstrap cache into
-        # emptyDirs: nginx serves public/ from its own container, and
-        # bootstrap/cache must be writable under a read-only root filesystem.
+        # Prepare writable paths under a read-only root filesystem:
+        #  - public/ assets -> emptyDir served by nginx
+        #  - bootstrap/cache -> emptyDir (Laravel compiled config/services)
+        #  - storage/ skeleton (framework/cache, sessions, views, logs, uploads)
+        #    -> PVC, copied without overwriting, so a new empty volume works and
+        #    existing data is never touched.
+        # cp -R, not -a: the volume roots are root-owned mount points, so a
+        # non-root cp cannot preserve timestamps/ownership on them.
         - name: copy-assets
           image: {{ $appImage }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["sh", "-c"]
           args:
             - >-
-              cp -a /var/www/bookstack/public/. /public/ &&
-              cp -a /var/www/bookstack/bootstrap/cache/. /bootstrap-cache/
+              cp -R /var/www/bookstack/public/. /public/ &&
+              cp -R /var/www/bookstack/bootstrap/cache/. /bootstrap-cache/ &&
+              cp -R --update=none /var/www/bookstack/storage/. /storage/
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
@@ -60,6 +66,7 @@ spec:
           volumeMounts:
             - { name: public, mountPath: /public }
             - { name: bootstrap-cache, mountPath: /bootstrap-cache }
+            - { name: data, mountPath: /storage, subPath: storage }
         {{- if .Values.migrations.enabled }}
         # Apply schema migrations before php-fpm starts. If the database is
         # not ready yet this exits non-zero and the kubelet retries with backoff.
@@ -90,7 +97,9 @@ spec:
           livenessProbe:
             httpGet:
               path: /fpm-ping
-              port: health
+              # Numeric: named ports resolve only within the probing container,
+              # and "health" is declared on the nginx container.
+              port: {{ .Values.probes.healthPort }}
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}

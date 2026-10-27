@@ -1,0 +1,9 @@
+# Values used by the install tests (tests/install.sh and `ct install`).
+# kind's default StorageClass and the locally built image are used.
+bookstack:
+  appUrl: http://bookstack.test
+persistence:
+  size: 1Gi
+mariadb:
+  persistence:
+    size: 1Gi

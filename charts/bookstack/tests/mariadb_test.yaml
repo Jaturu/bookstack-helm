@@ -1,0 +1,101 @@
+suite: built-in mariadb
+templates:
+  - mariadb-statefulset.yaml
+  - mariadb-service.yaml
+  - mariadb-configmap.yaml
+release:
+  name: wiki
+set:
+  bookstack.appUrl: https://wiki.example.com
+tests:
+  - it: renders nothing when MariaDB is disabled
+    set:
+      mariadb.enabled: false
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  - it: runs a single-replica StatefulSet behind a headless Service
+    asserts:
+      - equal: { path: spec.replicas, value: 1 }
+        template: mariadb-statefulset.yaml
+      - equal: { path: spec.serviceName, value: wiki-bookstack-mariadb }
+        template: mariadb-statefulset.yaml
+      - equal: { path: spec.clusterIP, value: None }
+        template: mariadb-service.yaml
+      - equal:
+          path: spec.selector
+          value:
+            app.kubernetes.io/name: bookstack
+            app.kubernetes.io/instance: wiki
+            app.kubernetes.io/component: mariadb
+        template: mariadb-service.yaml
+
+  - it: uses the official image pinned to the LTS series
+    template: mariadb-statefulset.yaml
+    asserts:
+      - equal: { path: 'spec.template.spec.containers[0].image', value: docker.io/library/mariadb:11.8 }
+
+  - it: creates the database and user from the chart Secret
+    template: mariadb-statefulset.yaml
+    asserts:
+      - equal:
+          path: 'spec.template.spec.containers[0].env'
+          value:
+            - { name: MARIADB_DATABASE, value: bookstack }
+            - { name: MARIADB_USER, value: bookstack }
+            - name: MARIADB_PASSWORD
+              valueFrom: { secretKeyRef: { name: wiki-bookstack-mariadb, key: mariadb-password } }
+            - name: MARIADB_ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: wiki-bookstack-mariadb, key: mariadb-root-password } }
+            - { name: MARIADB_AUTO_UPGRADE, value: "1" }
+
+  - it: reads passwords from an existing Secret when given
+    template: mariadb-statefulset.yaml
+    set:
+      mariadb.auth.existingSecret: my-db
+    asserts:
+      - equal:
+          path: 'spec.template.spec.containers[0].env[2].valueFrom.secretKeyRef.name'
+          value: my-db
+
+  - it: retains the data PVC and honours the storage class
+    template: mariadb-statefulset.yaml
+    set:
+      mariadb.persistence.storageClass: ceph-block
+      mariadb.persistence.size: 20Gi
+    asserts:
+      - equal:
+          path: spec.persistentVolumeClaimRetentionPolicy
+          value: { whenDeleted: Retain, whenScaled: Retain }
+      - equal: { path: 'spec.volumeClaimTemplates[0].spec.storageClassName', value: ceph-block }
+      - equal: { path: 'spec.volumeClaimTemplates[0].spec.resources.requests.storage', value: 20Gi }
+
+  - it: runs restricted with writable paths only on volumes
+    template: mariadb-statefulset.yaml
+    asserts:
+      - equal: { path: spec.template.spec.securityContext.runAsUser, value: 999 }
+      - equal: { path: spec.template.spec.securityContext.runAsNonRoot, value: true }
+      - equal: { path: 'spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem', value: true }
+      - equal:
+          path: 'spec.template.spec.containers[0].volumeMounts'
+          value:
+            - { name: data, mountPath: /var/lib/mysql }
+            - { name: config, mountPath: /etc/mysql/conf.d/zz-chart.cnf, subPath: zz-chart.cnf, readOnly: true }
+            - { name: run, mountPath: /run/mysqld }
+            - { name: tmp, mountPath: /tmp }
+
+  - it: renders mariadb.config into the server config file
+    template: mariadb-configmap.yaml
+    set:
+      mariadb.config: |
+        [mysqld]
+        max_connections = 50
+    asserts:
+      - equal:
+          path: 'data["zz-chart.cnf"]'
+          value: "[mysqld]\nmax_connections = 50\n"
+
+  - it: rolls the pod when the config changes
+    template: mariadb-statefulset.yaml
+    asserts:
+      - exists: { path: 'spec.template.metadata.annotations["checksum/config"]' }

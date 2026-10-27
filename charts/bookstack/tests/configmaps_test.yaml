@@ -1,0 +1,155 @@
+suite: configmaps (app env, PHP ini, nginx)
+templates:
+  - configmap.yaml
+  - configmap-php.yaml
+  - configmap-nginx.yaml
+release:
+  name: wiki
+set:
+  bookstack.appUrl: https://wiki.example.com
+tests:
+  # ------------------------------------------------------------- app env
+  - it: renders the modelled settings with built-in MariaDB wiring
+    template: configmap.yaml
+    asserts:
+      - equal: { path: metadata.name, value: wiki-bookstack }
+      - equal:
+          path: data
+          value:
+            APP_URL: https://wiki.example.com
+            APP_TIMEZONE: UTC
+            APP_LANG: en
+            DB_HOST: wiki-bookstack-mariadb
+            DB_PORT: "3306"
+            DB_DATABASE: bookstack
+            DB_USERNAME: bookstack
+            STORAGE_TYPE: local_secure_restricted
+            FILE_UPLOAD_SIZE_LIMIT: "50"
+
+  - it: wires an external database
+    template: configmap.yaml
+    set:
+      mariadb.enabled: false
+      externalDatabase.host: db.example
+      externalDatabase.port: 3307
+      externalDatabase.database: wiki
+      externalDatabase.username: wikiuser
+      externalDatabase.existingSecret: ext-db
+    asserts:
+      - equal: { path: data.DB_HOST, value: db.example }
+      - equal: { path: data.DB_PORT, value: "3307" }
+      - equal: { path: data.DB_DATABASE, value: wiki }
+      - equal: { path: data.DB_USERNAME, value: wikiuser }
+
+  - it: adds optional settings only when set
+    template: configmap.yaml
+    set:
+      bookstack.trustedProxies: 10.244.0.0/16
+      bookstack.storageImageType: local_secure
+    asserts:
+      - equal: { path: data.APP_PROXIES, value: 10.244.0.0/16 }
+      - equal: { path: data.STORAGE_IMAGE_TYPE, value: local_secure }
+      - notExists: { path: data.STORAGE_ATTACHMENT_TYPE }
+      - notExists: { path: data.STORAGE_S3_BUCKET }
+
+  - it: adds non-secret S3 settings when S3 is used, never the keys
+    template: configmap.yaml
+    set:
+      bookstack.storageAttachmentType: s3
+      bookstack.s3.bucket: wiki
+      bookstack.s3.endpoint: http://rgw.rook-ceph.svc
+      bookstack.s3.url: https://s3.example.com/wiki
+      bookstack.s3.existingSecret: obc
+    asserts:
+      - equal: { path: data.STORAGE_ATTACHMENT_TYPE, value: s3 }
+      - equal: { path: data.STORAGE_S3_BUCKET, value: wiki }
+      - equal: { path: data.STORAGE_S3_REGION, value: us-east-1 }
+      - equal: { path: data.STORAGE_S3_ENDPOINT, value: http://rgw.rook-ceph.svc }
+      - equal: { path: data.STORAGE_URL, value: https://s3.example.com/wiki }
+      - notExists: { path: data.STORAGE_S3_KEY }
+      - notExists: { path: data.STORAGE_S3_SECRET }
+
+  - it: merges bookstack.env as strings
+    template: configmap.yaml
+    set:
+      bookstack.env:
+        MAIL_DRIVER: smtp
+        MAIL_PORT: 587
+        APP_DEBUG: false
+    asserts:
+      - equal: { path: data.MAIL_DRIVER, value: smtp }
+      - equal: { path: data.MAIL_PORT, value: "587" }
+      - equal: { path: data.APP_DEBUG, value: "false" }
+      - equal: { path: data.APP_URL, value: https://wiki.example.com }
+
+  # ------------------------------------------------------------- PHP ini
+  - it: derives PHP upload limits from uploadLimitMB
+    template: configmap-php.yaml
+    set:
+      bookstack.uploadLimitMB: 200
+    asserts:
+      - equal: { path: metadata.name, value: wiki-bookstack-php }
+      - matchRegex:
+          path: 'data["zz-chart.ini"]'
+          pattern: '(?m)^upload_max_filesize = 200M$'
+      - matchRegex:
+          path: 'data["zz-chart.ini"]'
+          pattern: '(?m)^post_max_size\s+= 205M$'
+      - notMatchRegex:
+          path: 'data["zz-chart.ini"]'
+          pattern: 'php.extraIni'
+
+  - it: appends php.extraIni after the derived limits
+    template: configmap-php.yaml
+    set:
+      php.extraIni: |
+        memory_limit = 512M
+        max_execution_time = 300
+    asserts:
+      - matchRegex:
+          path: 'data["zz-chart.ini"]'
+          pattern: '(?s)post_max_size.*; php\.extraIni\nmemory_limit = 512M\nmax_execution_time = 300'
+
+  # --------------------------------------------------------------- nginx
+  - it: derives client_max_body_size from uploadLimitMB
+    template: configmap-nginx.yaml
+    set:
+      bookstack.uploadLimitMB: 200
+    asserts:
+      - equal: { path: metadata.name, value: wiki-bookstack-nginx }
+      - matchRegex:
+          path: 'data["bookstack.conf"]'
+          pattern: 'client_max_body_size 205m;'
+
+  - it: listens on the app and health ports
+    template: configmap-nginx.yaml
+    set:
+      nginx.port: 9080
+      probes.healthPort: 9081
+    asserts:
+      - matchRegex:
+          path: 'data["bookstack.conf"]'
+          pattern: '(?s)listen 9080;.*listen 9081;'
+
+  - it: only executes the front controller and hides dotfiles
+    template: configmap-nginx.yaml
+    asserts:
+      - matchRegex:
+          path: 'data["bookstack.conf"]'
+          pattern: 'location = /index\.php \{'
+      - matchRegex:
+          path: 'data["bookstack.conf"]'
+          pattern: 'location ~ \\\.php\$ \{ return 404; \}'
+      - matchRegex:
+          path: 'data["bookstack.conf"]'
+          pattern: 'location ~ /\\\.\s+\{ deny all; \}'
+
+  - it: serves /fpm-ping only on the health server
+    template: configmap-nginx.yaml
+    asserts:
+      - matchRegex:
+          path: 'data["bookstack.conf"]'
+          pattern: '(?s)listen 8081;.*location = /fpm-ping'
+      - notMatchRegex:
+          path: 'data["bookstack.conf"]'
+          pattern: 'fpm-status'

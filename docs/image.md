@@ -92,7 +92,7 @@ means a new pod and a fresh cache.
 ```console
 make version        # prints the BookStack version from Chart.yaml
 make image          # builds bookstack:dev and ghcr.io/jaturu/bookstack:<version>
-make image-test     # build + smoke test (uid, version, fpm config, artisan)
+make test-image     # build + contract tests (see Testing)
 ```
 
 Other build args, rarely changed:
@@ -112,8 +112,8 @@ Other build args, rarely changed:
    `version`.
 3. If requirements changed, adjust `PHP_VERSION`, `DEBIAN_SUITE` or
    `PHP_PACKAGES` in the Dockerfile.
-4. `make image-test`, then test an upgrade of an existing install
-   (see [Upgrading](upgrading.md)).
+4. `make test-all`: unit, schema, image and install tests (see
+   [Testing](testing.md)).
 5. Commit. CI builds and publishes the image and the chart.
 
 ## Using your own image

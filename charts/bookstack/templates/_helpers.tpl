@@ -151,6 +151,16 @@ app.kubernetes.io/component: {{ .component }}
 {{- fail "externalDatabase.existingSecret is required when mariadb.enabled=false" -}}
 {{- end -}}
 {{- end -}}
+{{- $modes := list "local" "local_secure" "local_secure_restricted" "s3" -}}
+{{- if not (has .Values.bookstack.storageType $modes) -}}
+{{- fail (printf "bookstack.storageType must be one of %s (got %q)" (join ", " $modes) .Values.bookstack.storageType) -}}
+{{- end -}}
+{{- range $k := list "storageImageType" "storageAttachmentType" -}}
+{{- $v := index $.Values.bookstack $k -}}
+{{- if and $v (not (has $v $modes)) -}}
+{{- fail (printf "bookstack.%s must be empty or one of %s (got %q)" $k (join ", " $modes) $v) -}}
+{{- end -}}
+{{- end -}}
 {{- $types := list .Values.bookstack.storageType .Values.bookstack.storageImageType .Values.bookstack.storageAttachmentType -}}
 {{- if has "s3" $types -}}
 {{- if not .Values.bookstack.s3.bucket -}}

@@ -1,0 +1,39 @@
+suite: helm test hook
+templates:
+  - test-connection.yaml
+release:
+  name: wiki
+chart:
+  appVersion: v99.01
+set:
+  bookstack.appUrl: https://wiki.example.com
+tests:
+  - it: is a test hook pod that cleans up after success
+    asserts:
+      - isKind: { of: Pod }
+      - equal: { path: 'metadata.annotations["helm.sh/hook"]', value: test }
+      - equal:
+          path: 'metadata.annotations["helm.sh/hook-delete-policy"]'
+          value: before-hook-creation,hook-succeeded
+      - equal: { path: spec.restartPolicy, value: Never }
+
+  - it: targets the Service on its port
+    set:
+      service.port: 8000
+    asserts:
+      - contains:
+          path: 'spec.containers[0].env'
+          content: { name: BOOKSTACK_URL, value: "http://wiki-bookstack:8000" }
+
+  - it: uses the app image and the restricted security context
+    asserts:
+      - equal: { path: 'spec.containers[0].image', value: ghcr.io/jaturu/bookstack:v99.01 }
+      - equal: { path: spec.securityContext.runAsNonRoot, value: true }
+      - equal: { path: 'spec.containers[0].securityContext.readOnlyRootFilesystem', value: true }
+      - equal: { path: 'spec.containers[0].securityContext.allowPrivilegeEscalation', value: false }
+
+  - it: can be disabled
+    set:
+      tests.enabled: false
+    asserts:
+      - hasDocuments: { count: 0 }

@@ -1,0 +1,97 @@
+suite: service, httproute, ingress, pvc
+templates:
+  - service.yaml
+  - httproute.yaml
+  - ingress.yaml
+  - pvc.yaml
+release:
+  name: wiki
+set:
+  bookstack.appUrl: https://wiki.example.com
+tests:
+  - it: renders only the Service and PVC by default
+    asserts:
+      - hasDocuments: { count: 1 }
+        template: service.yaml
+      - hasDocuments: { count: 1 }
+        template: pvc.yaml
+      - hasDocuments: { count: 0 }
+        template: httproute.yaml
+      - hasDocuments: { count: 0 }
+        template: ingress.yaml
+
+  - it: exposes only the named http port, targeting nginx
+    template: service.yaml
+    asserts:
+      - equal:
+          path: spec.ports
+          value: [{ name: http, port: 80, targetPort: http, protocol: TCP }]
+      - equal: { path: 'spec.selector["app.kubernetes.io/component"]', value: app }
+
+  # ---------------------------------------------------------------- PVC
+  - it: keeps the PVC on uninstall and sets the storage class
+    template: pvc.yaml
+    set:
+      persistence.storageClass: ceph-block
+      persistence.size: 20Gi
+    asserts:
+      - equal: { path: metadata.name, value: wiki-bookstack-data }
+      - equal: { path: 'metadata.annotations["helm.sh/resource-policy"]', value: keep }
+      - equal: { path: spec.storageClassName, value: ceph-block }
+      - equal: { path: spec.resources.requests.storage, value: 20Gi }
+
+  - it: creates no PVC for an existing claim or without persistence
+    template: pvc.yaml
+    set:
+      persistence.existingClaim: my-claim
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  # ---------------------------------------------------------- HTTPRoute
+  - it: renders an HTTPRoute to the Service
+    template: httproute.yaml
+    set:
+      httpRoute.enabled: true
+      httpRoute.parentRefs: [{ name: chmr-gw, namespace: envoy-gateway-system, sectionName: https }]
+      httpRoute.hostnames: [wiki.example.com]
+    asserts:
+      - equal: { path: apiVersion, value: gateway.networking.k8s.io/v1 }
+      - equal: { path: spec.parentRefs, value: [{ name: chmr-gw, namespace: envoy-gateway-system, sectionName: https }] }
+      - equal: { path: spec.hostnames, value: [wiki.example.com] }
+      - equal:
+          path: 'spec.rules[0].backendRefs'
+          value: [{ name: wiki-bookstack, port: 80 }]
+
+  - it: requires parentRefs for an HTTPRoute
+    template: httproute.yaml
+    set:
+      httpRoute.enabled: true
+    asserts:
+      - failedTemplate: { errorPattern: "httpRoute.parentRefs must list at least one Gateway" }
+
+  # ------------------------------------------------------------ Ingress
+  - it: renders one rule per host and passes TLS through
+    template: ingress.yaml
+    set:
+      ingress.enabled: true
+      ingress.className: nginx
+      ingress.hosts: [wiki.example.com, docs.example.com]
+      ingress.tls: [{ secretName: wiki-tls, hosts: [wiki.example.com] }]
+    asserts:
+      - equal: { path: spec.ingressClassName, value: nginx }
+      - lengthEqual: { path: spec.rules, count: 2 }
+      - equal: { path: 'spec.rules[1].host', value: docs.example.com }
+      - equal:
+          path: 'spec.rules[0].http.paths[0]'
+          value:
+            path: /
+            pathType: Prefix
+            backend: { service: { name: wiki-bookstack, port: { name: http } } }
+      - equal: { path: spec.tls, value: [{ secretName: wiki-tls, hosts: [wiki.example.com] }] }
+
+  - it: requires hosts for an Ingress
+    template: ingress.yaml
+    set:
+      ingress.enabled: true
+    asserts:
+      - failedTemplate: { errorPattern: "ingress.hosts must list at least one hostname" }

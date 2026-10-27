@@ -1,0 +1,90 @@
+{{- if .Values.tests.enabled }}
+{{- /*
+  `helm test` hook: checks a running release through its Service, the same
+  path the Gateway / Ingress uses. Runs the BookStack image's own PHP CLI, so
+  no extra image is needed, under the same restricted security context.
+*/ -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "bookstack.fullname" . }}-test
+  labels:
+    {{- include "bookstack.labels" (dict "ctx" $ "component" "test") | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  securityContext:
+    {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  containers:
+    - name: test
+      image: {{ include "bookstack.imageRef" (dict "image" .Values.image "default" .Chart.AppVersion) }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      resources:
+        requests: { cpu: 10m, memory: 32Mi }
+        limits: { memory: 128Mi }
+      env:
+        - name: BOOKSTACK_URL
+          value: http://{{ include "bookstack.fullname" . }}:{{ .Values.service.port }}
+      command: ["php", "-r"]
+      args:
+        - |
+          $base = getenv('BOOKSTACK_URL');
+          $failed = 0;
+          function get(string $url): array {
+              $ctx = stream_context_create(['http' => [
+                  'ignore_errors' => true, 'follow_location' => 0, 'timeout' => 15,
+              ]]);
+              $body = @file_get_contents($url, false, $ctx);
+              $code = isset($http_response_header[0])
+                  ? (int) explode(' ', $http_response_header[0])[1] : 0;
+              return [$code, (string) $body];
+          }
+          function check(string $name, bool $ok, string $detail = ''): void {
+              global $failed;
+              echo ($ok ? 'PASS ' : 'FAIL ') . $name . ($ok ? '' : "  [$detail]") . PHP_EOL;
+              if (!$ok) { $failed = 1; }
+          }
+          echo "Testing $base" . PHP_EOL;
+
+          // BookStack health: database, cache and session store.
+          [$code, $body] = get("$base/status");
+          $status = json_decode($body, true) ?: [];
+          check('GET /status returns 200', $code === 200, "HTTP $code");
+          foreach (['database', 'cache', 'session'] as $k) {
+              check("/status reports $k ok", ($status[$k] ?? false) === true, $body);
+          }
+
+          // Application renders (migrations applied, APP_KEY valid).
+          [$code, $body] = get("$base/login");
+          check('GET /login returns 200', $code === 200, "HTTP $code");
+          check('login page renders a form', str_contains($body, 'name="password"'), substr($body, 0, 200));
+
+          // nginx serves compiled assets directly.
+          [$code] = get("$base/dist/app.js");
+          check('GET /dist/app.js returns 200', $code === 200, "HTTP $code");
+
+          // Hardening: only index.php executes, dotfiles and app files hidden.
+          [$code] = get("$base/status.php");
+          check('other .php paths return 404', $code === 404, "HTTP $code");
+          [$code] = get("$base/.env");
+          check('dotfiles are denied', in_array($code, [403, 404], true), "HTTP $code");
+          [$code, $body] = get("$base/../artisan");
+          check('files outside public/ are not served', !str_contains($body, 'Artisan'), "HTTP $code");
+
+          exit($failed);
+      volumeMounts:
+        - { name: tmp, mountPath: /tmp }
+  volumes:
+    - name: tmp
+      emptyDir: {}
+{{- end }}

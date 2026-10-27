@@ -1,0 +1,10 @@
+# All uploads on S3, no persistence (emptyDir).
+bookstack:
+  appUrl: https://wiki.example.com
+  storageType: s3
+  s3:
+    bucket: wiki
+    url: https://s3.example.com/wiki
+    existingSecret: wiki-obc
+persistence:
+  enabled: false

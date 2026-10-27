@@ -1,0 +1,325 @@
+suite: bookstack deployment
+templates:
+  - deployment.yaml
+  - configmap.yaml
+  - configmap-nginx.yaml
+  - configmap-php.yaml
+release:
+  name: wiki
+  namespace: bookstack
+chart:
+  appVersion: v99.01
+set:
+  bookstack.appUrl: https://wiki.example.com
+tests:
+  # ---------------------------------------------------------------- workload
+  - it: is a single-replica Deployment with the Recreate strategy
+    template: deployment.yaml
+    asserts:
+      - equal: { path: metadata.name, value: wiki-bookstack }
+      - equal: { path: spec.replicas, value: 1 }
+      - equal: { path: spec.strategy.type, value: Recreate }
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: bookstack
+            app.kubernetes.io/instance: wiki
+            app.kubernetes.io/component: app
+
+  - it: disables service-account token and service links
+    template: deployment.yaml
+    asserts:
+      - equal: { path: spec.template.spec.automountServiceAccountToken, value: false }
+      - equal: { path: spec.template.spec.enableServiceLinks, value: false }
+
+  - it: carries checksums of all three ConfigMaps
+    template: deployment.yaml
+    asserts:
+      - exists: { path: 'spec.template.metadata.annotations["checksum/config"]' }
+      - exists: { path: 'spec.template.metadata.annotations["checksum/nginx"]' }
+      - exists: { path: 'spec.template.metadata.annotations["checksum/php"]' }
+
+  # ------------------------------------------------------------------ images
+  - it: defaults the app image tag to the chart appVersion
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].image
+          value: ghcr.io/jaturu/bookstack:v99.01
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "migrate")].image
+          value: ghcr.io/jaturu/bookstack:v99.01
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "nginx")].image
+          value: docker.io/nginxinc/nginx-unprivileged:1.30-alpine
+
+  - it: uses an explicit tag over appVersion
+    template: deployment.yaml
+    set:
+      image.tag: v1.2.3
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].image
+          value: ghcr.io/jaturu/bookstack:v1.2.3
+
+  - it: prefers a digest over the tag
+    template: deployment.yaml
+    set:
+      image.tag: v1.2.3
+      image.digest: sha256:abc
+      nginx.image.digest: sha256:def
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].image
+          value: ghcr.io/jaturu/bookstack@sha256:abc
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "nginx")].image
+          value: docker.io/nginxinc/nginx-unprivileged@sha256:def
+
+  # --------------------------------------------------------- init containers
+  - it: runs copy-assets then migrate, in that order
+    template: deployment.yaml
+    asserts:
+      - lengthEqual: { path: spec.template.spec.initContainers, count: 2 }
+      - equal: { path: 'spec.template.spec.initContainers[0].name', value: copy-assets }
+      - equal: { path: 'spec.template.spec.initContainers[1].name', value: migrate }
+      - equal:
+          path: spec.template.spec.initContainers[1].command
+          value: ["php", "artisan", "migrate", "--force", "--no-interaction"]
+
+  - it: omits the migrate init container when migrations are disabled
+    template: deployment.yaml
+    set:
+      migrations.enabled: false
+    asserts:
+      - lengthEqual: { path: spec.template.spec.initContainers, count: 1 }
+      - equal: { path: 'spec.template.spec.initContainers[0].name', value: copy-assets }
+
+  - it: seeds the storage skeleton onto the PVC without overwriting
+    template: deployment.yaml
+    asserts:
+      # -a would fail as non-root on root-owned volume mount points
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[0].args[0]
+          pattern: 'cp -a'
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].args[0]
+          pattern: 'cp -R --update=none /var/www/bookstack/storage/\. /storage/'
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content: { name: data, mountPath: /storage, subPath: storage }
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content: { name: public, mountPath: /public }
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content: { name: bootstrap-cache, mountPath: /bootstrap-cache }
+
+  # ----------------------------------------------------------------- mounts
+  - it: gives migrate and bookstack identical mounts, including the PHP ini
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "migrate")].volumeMounts
+          value: &appMounts
+            - { name: data, mountPath: /var/www/bookstack/storage, subPath: storage }
+            - { name: data, mountPath: /var/www/bookstack/public/uploads, subPath: public-uploads }
+            - { name: bootstrap-cache, mountPath: /var/www/bookstack/bootstrap/cache }
+            - { name: app-tmp, mountPath: /tmp }
+            - { name: php-conf, mountPath: /etc/bookstack/php.d, readOnly: true }
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].volumeMounts
+          value: *appMounts
+
+  - it: mounts public/, system uploads and nginx config read-only in nginx
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "nginx")].volumeMounts
+          value:
+            - { name: public, mountPath: /var/www/bookstack/public, readOnly: true }
+            - { name: data, mountPath: /var/www/bookstack/public/uploads, subPath: public-uploads, readOnly: true }
+            - { name: nginx-conf, mountPath: /etc/nginx/conf.d, readOnly: true }
+            - { name: nginx-tmp, mountPath: /tmp }
+
+  - it: uses the chart PVC by default
+    template: deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content: { name: data, persistentVolumeClaim: { claimName: wiki-bookstack-data } }
+      - contains:
+          path: spec.template.spec.volumes
+          content: { name: php-conf, configMap: { name: wiki-bookstack-php } }
+      - contains:
+          path: spec.template.spec.volumes
+          content: { name: nginx-conf, configMap: { name: wiki-bookstack-nginx } }
+
+  - it: uses an existing claim when given
+    template: deployment.yaml
+    set:
+      persistence.existingClaim: my-claim
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content: { name: data, persistentVolumeClaim: { claimName: my-claim } }
+
+  - it: falls back to an emptyDir when persistence is disabled
+    template: deployment.yaml
+    set:
+      persistence.enabled: false
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content: { name: data, emptyDir: {} }
+
+  # -------------------------------------------------------------------- env
+  - it: loads the ConfigMap and the generated secrets into the app containers
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].envFrom
+          value:
+            - configMapRef: { name: wiki-bookstack }
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].env
+          value: &defaultEnv
+            - name: APP_KEY
+              valueFrom: { secretKeyRef: { name: wiki-bookstack-app-key, key: APP_KEY } }
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: wiki-bookstack-mariadb, key: mariadb-password } }
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "migrate")].env
+          value: *defaultEnv
+
+  - it: reads APP_KEY from an existing Secret when given
+    template: deployment.yaml
+    set:
+      bookstack.appKey.existingSecret: my-key
+      bookstack.appKey.secretKey: key
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].env
+          content:
+            name: APP_KEY
+            valueFrom: { secretKeyRef: { name: my-key, key: key } }
+
+  - it: reads DB_PASSWORD from the external database Secret
+    template: deployment.yaml
+    set:
+      mariadb.enabled: false
+      externalDatabase.host: db.example
+      externalDatabase.existingSecret: ext-db
+      externalDatabase.passwordKey: pw
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].env
+          content:
+            name: DB_PASSWORD
+            valueFrom: { secretKeyRef: { name: ext-db, key: pw } }
+
+  - it: adds S3 credentials only when S3 storage is used
+    template: deployment.yaml
+    set:
+      bookstack.storageAttachmentType: s3
+      bookstack.s3.bucket: wiki
+      bookstack.s3.existingSecret: obc
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].env
+          content:
+            name: STORAGE_S3_KEY
+            valueFrom: { secretKeyRef: { name: obc, key: AWS_ACCESS_KEY_ID } }
+      - contains:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].env
+          content:
+            name: STORAGE_S3_SECRET
+            valueFrom: { secretKeyRef: { name: obc, key: AWS_SECRET_ACCESS_KEY } }
+
+  - it: appends extraEnv and extraEnvFrom
+    template: deployment.yaml
+    set:
+      bookstack.extraEnv:
+        - name: MAIL_PASSWORD
+          valueFrom: { secretKeyRef: { name: mail, key: password } }
+      bookstack.extraEnvFrom:
+        - secretRef: { name: oidc }
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].env
+          content:
+            name: MAIL_PASSWORD
+            valueFrom: { secretKeyRef: { name: mail, key: password } }
+      - contains:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].envFrom
+          content: { secretRef: { name: oidc } }
+
+  # ---------------------------------------------------------- ports, probes
+  - it: exposes http and health ports on nginx only
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "nginx")].ports
+          value:
+            - { name: http, containerPort: 8080, protocol: TCP }
+            - { name: health, containerPort: 8081, protocol: TCP }
+      - notExists:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].ports
+
+  - it: probes php-fpm via a numeric port (named ports are per container)
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].livenessProbe.httpGet
+          value: { path: /fpm-ping, port: 8081 }
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "nginx")].readinessProbe.httpGet
+          value: { path: /status, port: http }
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "nginx")].livenessProbe.tcpSocket
+          value: { port: http }
+
+  - it: follows a custom health port
+    template: deployment.yaml
+    set:
+      probes.healthPort: 9091
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].livenessProbe.httpGet.port
+          value: 9091
+
+  # --------------------------------------------------------------- security
+  - it: applies the restricted security context to every container
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            runAsUser: 33
+            runAsGroup: 33
+            fsGroup: 33
+            fsGroupChangePolicy: OnRootMismatch
+            seccompProfile: { type: RuntimeDefault }
+      - equal:
+          path: spec.template.spec.containers[*].securityContext
+          value: &restricted
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+      - equal:
+          path: spec.template.spec.initContainers[*].securityContext
+          value: *restricted
+
+  - it: passes scheduling settings through
+    template: deployment.yaml
+    set:
+      nodeSelector: { kubernetes.io/os: linux }
+      tolerations: [{ key: dedicated, operator: Exists }]
+      podLabels: { team: it }
+      podAnnotations: { note: hi }
+    asserts:
+      - equal: { path: spec.template.spec.nodeSelector, value: { kubernetes.io/os: linux } }
+      - equal: { path: spec.template.spec.tolerations, value: [{ key: dedicated, operator: Exists }] }
+      - equal: { path: spec.template.metadata.labels.team, value: it }
+      - equal: { path: spec.template.metadata.annotations.note, value: hi }

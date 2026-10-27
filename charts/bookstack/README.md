@@ -203,6 +203,7 @@ Kubernetes: `>=1.29.0-0`
 | service.annotations | object | `{}` | Service annotations. |
 | service.port | int | `80` | Service port (targets nginx's http port). |
 | service.type | string | `"ClusterIP"` | Service type. |
+| tests.enabled | bool | `true` | Render the `helm test` pod (templates/test-connection.yaml). |
 | tolerations | list | `[]` | Tolerations for the BookStack pod. |
 
 ----------------------------------------------

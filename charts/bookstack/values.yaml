@@ -377,6 +377,12 @@ probes:
     timeoutSeconds: 5
     failureThreshold: 3
 
+## `helm test` hook: a pod that checks the running release through its Service
+## (/status health, login page, static assets, hardening rules).
+tests:
+  # -- Render the `helm test` pod (templates/test-connection.yaml).
+  enabled: true
+
 # -- Extra annotations on the BookStack pod.
 podAnnotations: {}
 # -- Extra labels on the BookStack pod.

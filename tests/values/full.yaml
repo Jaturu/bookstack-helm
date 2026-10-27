@@ -1,0 +1,38 @@
+# Every optional feature on: HTTPRoute + Ingress, S3 attachments, extras.
+bookstack:
+  appUrl: https://wiki.example.com
+  trustedProxies: 10.244.0.0/16
+  uploadLimitMB: 200
+  storageAttachmentType: s3
+  s3:
+    bucket: wiki
+    endpoint: http://rook-ceph-rgw-objectstore.rook-ceph.svc
+    existingSecret: wiki-obc
+  env:
+    MAIL_DRIVER: smtp
+  extraEnv:
+    - name: MAIL_PASSWORD
+      valueFrom: { secretKeyRef: { name: mail, key: password } }
+  extraEnvFrom:
+    - secretRef: { name: oidc }
+php:
+  extraIni: |
+    memory_limit = 512M
+httpRoute:
+  enabled: true
+  parentRefs: [{ name: gw, namespace: gateway-system, sectionName: https }]
+  hostnames: [wiki.example.com]
+ingress:
+  enabled: true
+  className: nginx
+  annotations: { nginx.ingress.kubernetes.io/proxy-body-size: 205m }
+  hosts: [wiki.example.com]
+  tls: [{ secretName: wiki-tls, hosts: [wiki.example.com] }]
+persistence:
+  storageClass: fast
+mariadb:
+  persistence:
+    storageClass: fast
+imagePullSecrets: [{ name: regcred }]
+nodeSelector: { kubernetes.io/os: linux }
+tolerations: [{ key: dedicated, operator: Exists, effect: NoSchedule }]

@@ -1,0 +1,14 @@
+# External database, existing secrets and claim, no persistence chart objects.
+bookstack:
+  appUrl: https://wiki.example.com
+  appKey:
+    existingSecret: wiki-app-key
+mariadb:
+  enabled: false
+externalDatabase:
+  host: mariadb.databases.svc
+  existingSecret: wiki-db
+persistence:
+  existingClaim: wiki-data
+migrations:
+  enabled: false

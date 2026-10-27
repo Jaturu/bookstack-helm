@@ -1,0 +1,3 @@
+# Minimal install: built-in MariaDB, chart PVC, no route.
+bookstack:
+  appUrl: https://wiki.example.com

@@ -1,0 +1,135 @@
+suite: render-time validation
+templates:
+  # The Deployment includes the ConfigMaps for its checksum annotations.
+  - deployment.yaml
+  - configmap.yaml
+  - configmap-nginx.yaml
+  - configmap-php.yaml
+set:
+  bookstack.appUrl: https://wiki.example.com
+tests:
+  - it: renders with only appUrl set
+    asserts:
+      - template: deployment.yaml
+        isKind:
+          of: Deployment
+
+  - it: requires appUrl
+    set:
+      bookstack.appUrl: ""
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "bookstack.appUrl is required"
+
+  - it: rejects a trailing slash on appUrl
+    set:
+      bookstack.appUrl: https://wiki.example.com/
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "must not end with a slash"
+
+  - it: rejects uploadLimitMB below 1
+    set:
+      bookstack.uploadLimitMB: 0
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "uploadLimitMB must be a positive number"
+
+  - it: rejects upload limits in php.extraIni
+    set:
+      php.extraIni: |
+        memory_limit = 512M
+        post_max_size = 1G
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "php.extraIni must not set upload_max_filesize or post_max_size"
+
+  - it: allows other settings in php.extraIni
+    set:
+      php.extraIni: "memory_limit = 512M"
+    asserts:
+      - template: deployment.yaml
+        isKind:
+          of: Deployment
+
+  - it: rejects replicaCount other than 1
+    set:
+      replicaCount: 2
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "replicaCount must be 1"
+
+  - it: requires externalDatabase.host when MariaDB is disabled
+    set:
+      mariadb.enabled: false
+      externalDatabase.existingSecret: db
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "externalDatabase.host is required"
+
+  - it: requires externalDatabase.existingSecret when MariaDB is disabled
+    set:
+      mariadb.enabled: false
+      externalDatabase.host: db.example
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "externalDatabase.existingSecret is required"
+
+  - it: rejects an unknown storageType
+    set:
+      bookstack.storageType: secure
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "bookstack.storageType must be one of"
+
+  - it: rejects an unknown per-type storage override
+    set:
+      bookstack.storageAttachmentType: gcs
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "bookstack.storageAttachmentType must be empty or one of"
+
+  - it: requires an S3 bucket when S3 is used
+    set:
+      bookstack.storageAttachmentType: s3
+      bookstack.s3.existingSecret: obc
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "bookstack.s3.bucket is required"
+
+  - it: requires an S3 Secret when S3 is used
+    set:
+      bookstack.storageType: s3
+      bookstack.s3.bucket: wiki
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "bookstack.s3.existingSecret is required"
+
+  - it: rejects a managed key in bookstack.env
+    set:
+      bookstack.env:
+        APP_URL: https://other.example.com
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "bookstack.env.APP_URL is set by the chart"
+
+  - it: rejects a secret in bookstack.env
+    set:
+      bookstack.env:
+        DB_PASSWORD: hunter2
+    asserts:
+      - template: deployment.yaml
+        failedTemplate:
+          errorPattern: "bookstack.env.DB_PASSWORD is a secret"
