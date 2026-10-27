@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "label": "security status",
-  "message": "not yet scanned",
-  "color": "lightgrey"
+  "label": "scanned 2026-10-27",
+  "message": "no fixable High or Critical, 210 unfixed",
+  "color": "yellow"
 }
