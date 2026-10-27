@@ -1,0 +1,183 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "metadata": {
+    "timestamp": "2026-08-05T09:39:59Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "author": "anchore",
+          "name": "syft",
+          "version": "1.49.0"
+        }
+      ]
+    },
+    "component": {
+      "bom-ref": "47f6dc4fd2242d76",
+      "type": "container",
+      "name": "docker.io/jaturu/omada-release-watch",
+      "version": "sha256:6441a5df9615790a83b6096df35043fd3d9fb7593baf328eafd20df3c4922c44"
+    },
+    "properties": [
+      {
+        "name": "syft:image:labels:org.opencontainers.image.created",
+        "value": "2026-08-05T09:39:26.416Z"
+      },
+      {
+        "name": "syft:image:labels:org.opencontainers.image.description",
+        "value": "Query a signed catalog of TP-Link Omada Software Controller releases and fetch artifacts from it."
+      },
+      {
+        "name": "syft:image:labels:org.opencontainers.image.licenses",
+        "value": "Apache-2.0"
+      },
+      {
+        "name": "syft:image:labels:org.opencontainers.image.revision",
+        "value": "6b0f621faf218c32a48b33d626cb525ee065895f"
+      },
+      {
+        "name": "syft:image:labels:org.opencontainers.image.source",
+        "value": "https://github.com/Jaturu/omada-release-watch"
+      },
+      {
+        "name": "syft:image:labels:org.opencontainers.image.title",
+        "value": "omada-release-watch"
+      },
+      {
+        "name": "syft:image:labels:org.opencontainers.image.url",
+        "value": "https://github.com/Jaturu/omada-release-watch"
+      },
+      {
+        "name": "syft:image:labels:org.opencontainers.image.version",
+        "value": "main"
+      }
+    ]
+  },
+  "components": [
+    {
+      "bom-ref": "os:alpine@3.24.1",
+      "type": "operating-system",
+      "name": "alpine",
+      "version": "3.24.1",
+      "description": "Alpine Linux v3.24",
+      "swid": {
+        "tagId": "alpine",
+        "name": "alpine",
+        "version": "3.24.1"
+      },
+      "externalReferences": [
+        {
+          "url": "https://gitlab.alpinelinux.org/alpine/aports/-/issues",
+          "type": "issue-tracker"
+        },
+        {
+          "url": "https://alpinelinux.org/",
+          "type": "website"
+        }
+      ]
+    },
+    {
+      "bom-ref": "7b50ff083cf9562f",
+      "type": "application",
+      "name": "Simple Launcher",
+      "version": "1.1.0.14",
+      "cpe": "cpe:2.3:a:Simple_Launcher:Simple_Launcher:1.1.0.14:*:*:*:*:*:*:*"
+    },
+    {
+      "bom-ref": "0ba47e4adb5bc7ad",
+      "type": "application",
+      "name": "Simple Launcher",
+      "version": "1.1.0.14",
+      "cpe": "cpe:2.3:a:Simple_Launcher:Simple_Launcher:1.1.0.14:*:*:*:*:*:*:*"
+    },
+    {
+      "bom-ref": "pkg:apk/alpine/.python-rundeps@20260616.002554?arch=noarch&distro=alpine-3.24.1&package-id=4d860b7546530b75",
+      "type": "library",
+      "name": ".python-rundeps",
+      "version": "20260616.002554",
+      "description": "virtual meta package",
+      "cpe": "cpe:2.3:a:.python-rundeps:.python-rundeps:20260616.002554:*:*:*:*:*:*:*",
+      "purl": "pkg:apk/alpine/.python-rundeps@20260616.002554?arch=noarch&distro=alpine-3.24.1"
+    },
+    {
+      "bom-ref": "pkg:apk/alpine/alpine-baselayout@3.7.2-r1?arch=x86_64&distro=alpine-3.24.1&package-id=1e1affaf659b0bd3",
+      "type": "library",
+      "publisher": "Natanael Copa <ncopa@alpinelinux.org>",
+      "name": "alpine-baselayout",
+      "version": "3.7.2-r1",
+      "description": "Alpine base dir structure and init scripts",
+      "licenses": [
+        {
+          "license": {
+            "id": "GPL-2.0-only"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:alpine-baselayout:alpine-baselayout:3.7.2-r1:*:*:*:*:*:*:*",
+      "purl": "pkg:apk/alpine/alpine-baselayout@3.7.2-r1?arch=x86_64&distro=alpine-3.24.1",
+      "externalReferences": [
+        {
+          "url": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/master/main/alpine-baselayout",
+          "type": "distribution"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:apk/alpine/alpine-baselayout-data@3.7.2-r1?arch=x86_64&distro=alpine-3.24.1&package-id=4cc5d861091994fc&upstream=alpine-baselayout",
+      "type": "library",
+      "publisher": "Natanael Copa <ncopa@alpinelinux.org>",
+      "name": "alpine-baselayout-data",
+      "version": "3.7.2-r1",
+      "description": "Alpine base dir structure and init scripts",
+      "licenses": [
+        {
+          "license": {
+            "id": "GPL-2.0-only"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:alpine-baselayout-data:alpine-baselayout-data:3.7.2-r1:*:*:*:*:*:*:*",
+      "purl": "pkg:apk/alpine/alpine-baselayout-data@3.7.2-r1?arch=x86_64&distro=alpine-3.24.1&upstream=alpine-baselayout",
+      "externalReferences": [
+        {
+          "url": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/master/main/alpine-baselayout",
+          "type": "distribution"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:apk/alpine/alpine-keys@2.6-r0?arch=x86_64&distro=alpine-3.24.1&package-id=0ceaef0670a2bbd9",
+      "type": "library",
+      "publisher": "Natanael Copa <ncopa@alpinelinux.org>",
+      "name": "alpine-keys",
+      "version": "2.6-r0",
+      "description": "Public keys for Alpine Linux packages",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:alpine-keys:alpine-keys:2.6-r0:*:*:*:*:*:*:*",
+      "purl": "pkg:apk/alpine/alpine-keys@2.6-r0?arch=x86_64&distro=alpine-3.24.1",
+      "externalReferences": [
+        {
+          "url": "https://alpinelinux.org",
+          "type": "distribution"
+        }
+      ]
+    },
+    {
+      "bom-ref": "48bf811011ed86fa",
+      "type": "file",
+      "name": "/bin/busybox"
+    },
+    {
+      "bom-ref": "c9a17ca806b9ba21",
+      "type": "file",
+      "name": "/etc/alpine-release"
+    }
+  ]
+}

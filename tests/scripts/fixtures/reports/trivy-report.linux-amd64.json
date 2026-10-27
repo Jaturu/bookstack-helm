@@ -1,0 +1,18 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2026-08-05T09:41:10.957082907Z",
+  "ArtifactName": "docker.io/jaturu/omada-release-watch@sha256:6441a5df9615790a83b6096df35043fd3d9fb7593baf328eafd20df3c4922c44",
+  "ArtifactType": "container_image",
+  "Results": [
+    {
+      "Target": "docker.io/jaturu/omada-release-watch@sha256:6441a5df9615790a83b6096df35043fd3d9fb7593baf328eafd20df3c4922c44 (alpine 3.24.1)",
+      "Class": "os-pkgs",
+      "Type": "alpine"
+    },
+    {
+      "Target": "Python",
+      "Class": "lang-pkgs",
+      "Type": "python-pkg"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+# Grype suppressions for the release gate and the weekly re-scan.
+#
+# Every rule needs a reason naming the tracking issue, so the release report
+# and docs/security-status.md can show why a finding was accepted. A rule is
+# retired when a fix reaches a version this image can move to. Example:
+#
+#   ignore:
+#     - vulnerability: CVE-2023-45853
+#       package:
+#         name: zlib1g
+#       reason: "minizip is not built in Debian's zlib, so unreachable. Tracked in #N"
+ignore: []

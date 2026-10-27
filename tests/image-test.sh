@@ -6,7 +6,7 @@
 #   IMAGE=ghcr.io/jaturu/bookstack:v26.09.2 tests/image-test.sh
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 2
 IMAGE=${IMAGE:-bookstack:dev}
 VERSION=$(make -s version)
 failed=0

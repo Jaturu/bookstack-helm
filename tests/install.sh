@@ -10,6 +10,10 @@
 #   tests/install.sh                  # build, test, delete cluster
 #   KEEP_CLUSTER=1 tests/install.sh   # keep the cluster afterwards for poking
 #   SKIP_BUILD=1 tests/install.sh     # reuse an already built image
+#   FROM_PUBLISHED=1 tests/install.sh # upgrade test: install the latest
+#                                     # published chart + image from GHCR,
+#                                     # then upgrade to this checkout
+#   PUBLISHED_VERSION=0.1.0           # with FROM_PUBLISHED, pin the start
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -20,6 +24,7 @@ CHART=charts/bookstack
 VALUES=$CHART/ci/default-values.yaml
 VERSION=$(make -s version)
 IMAGE=ghcr.io/jaturu/bookstack:$VERSION
+PUBLISHED_CHART=oci://ghcr.io/jaturu/charts/bookstack
 
 for tool in docker kind kubectl helm make; do
   command -v "$tool" >/dev/null || { echo "missing: $tool" >&2; exit 2; }
@@ -65,7 +70,10 @@ if kind get clusters | grep -qx "$CLUSTER"; then
 else
   kind create cluster --name "$CLUSTER" --wait 120s
 fi
-kind load docker-image "$IMAGE" --name "$CLUSTER"
+# In the upgrade test the published image must be what the first install
+# runs, so the local image (same tag) is loaded only right before upgrading.
+load_local_image() { kind load docker-image "$IMAGE" --name "$CLUSTER"; }
+[ -n "${FROM_PUBLISHED:-}" ] || load_local_image
 
 step "namespace with restricted PodSecurity enforced"
 kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
@@ -73,8 +81,15 @@ kubectl label namespace "$NS" --overwrite \
   pod-security.kubernetes.io/enforce=restricted \
   pod-security.kubernetes.io/warn=restricted
 
-step "install"
-helm install "$REL" "$CHART" -n "$NS" -f "$VALUES" --wait --timeout 10m
+if [ -n "${FROM_PUBLISHED:-}" ]; then
+  step "install the published chart${PUBLISHED_VERSION:+ $PUBLISHED_VERSION} and image"
+  helm install "$REL" "$PUBLISHED_CHART" ${PUBLISHED_VERSION:+--version "$PUBLISHED_VERSION"} \
+    -n "$NS" -f "$VALUES" --wait --timeout 10m
+  helm list -n "$NS"
+else
+  step "install"
+  helm install "$REL" "$CHART" -n "$NS" -f "$VALUES" --wait --timeout 10m
+fi
 
 step "helm test"
 helm test "$REL" -n "$NS" --logs
@@ -85,7 +100,12 @@ key1=$(secret "$REL-bookstack-app-key" APP_KEY)
 pw1=$(secret "$REL-bookstack-mariadb" 'mariadb-password')
 pod1=$(kubectl -n "$NS" get pod -l app.kubernetes.io/component=app -o jsonpath='{.items[0].metadata.uid}')
 
-step "upgrade with a config change"
+if [ -n "${FROM_PUBLISHED:-}" ]; then
+  step "load this checkout's image for the upgrade"
+  load_local_image
+fi
+
+step "upgrade to this checkout, with a config change"
 helm upgrade "$REL" "$CHART" -n "$NS" -f "$VALUES" \
   --set bookstack.timezone=America/New_York --wait --timeout 10m
 [ "$(secret "$REL-bookstack-app-key" APP_KEY)" = "$key1" ] || fail "APP_KEY changed on upgrade"

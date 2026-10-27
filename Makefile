@@ -7,8 +7,9 @@ VERSION     := $(shell awk -F'"' '/^appVersion:/ {print $$2}' $(CHART)/Chart.yam
 IMAGE       ?= ghcr.io/jaturu/bookstack
 LOCAL_TAG   ?= bookstack:dev
 
-.PHONY: version image lint docs docs-check \
-        test test-unit test-schema test-image test-install test-all
+.PHONY: version image lint docs docs-check scan \
+        test test-unit test-schema test-scripts lint-files \
+        test-image test-install test-upgrade test-all
 
 version:            ## Print the BookStack version from Chart.yaml
 > @echo $(VERSION)
@@ -42,4 +43,19 @@ test-image: image   ## Build the image and run its contract tests
 test-install:       ## End-to-end install on a throwaway kind cluster
 > tests/install.sh
 
-test-all: test test-image test-install   ## Everything
+test-upgrade:       ## Install the latest published release, upgrade to this checkout
+> FROM_PUBLISHED=1 tests/install.sh
+
+test-scripts:       ## Release-report script tests + ruff (pip install -r requirements-dev.txt)
+> python3 -m pytest -q
+> ruff check scripts tests/scripts
+
+lint-files:         ## shellcheck the test scripts, hadolint the Dockerfile
+> shellcheck -S warning tests/*.sh
+> hadolint image/Dockerfile
+
+scan: image         ## The release gates, locally: fixable High+ findings (Grype + Trivy)
+> grype --config .grype-ignore.yaml --only-fixed --fail-on high $(LOCAL_TAG)
+> trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $(LOCAL_TAG)
+
+test-all: test lint-files test-scripts test-image test-install test-upgrade   ## Everything

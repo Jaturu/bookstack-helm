@@ -1,0 +1,5 @@
+# Same rule set as omada-release-watch, where the report scripts originate.
+
+[lint]
+select = ["E", "F", "B", "I"]
+ignore = ["E501"]

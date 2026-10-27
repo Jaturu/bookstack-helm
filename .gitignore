@@ -13,3 +13,14 @@ charts/*/Chart.lock
 .vscode/
 .idea/
 .DS_Store
+
+# Python
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Local scan output
+/sbom.cyclonedx*.json
+/grype-report*.json
+/trivy-report*.json

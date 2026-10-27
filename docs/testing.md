@@ -1,17 +1,21 @@
 # Testing
 
-Four layers, from fastest to most complete. Each catches a different class of
+Layers from fastest to most complete. Each catches a different class of
 mistake.
 
 | Layer | Command | Needs | Checks |
 |-------|---------|-------|--------|
 | Template unit tests | `make test-unit` | helm, helm-unittest plugin | Rendering logic: validation guards, derived limits, DB wiring, mounts, env, probes, security contexts, routes |
 | Schema validation | `make test-schema` | helm, kubeconform | Rendered manifests are valid Kubernetes / Gateway API objects, across several values scenarios |
+| File lint | `make lint-files` | shellcheck, hadolint | Test scripts and the Dockerfile |
+| Report scripts | `make test-scripts` | python3, pytest, ruff | The release report and security status renderers |
 | Image contract | `make test-image` | docker | The image provides what the chart relies on |
+| Vulnerability gates | `make scan` | docker, grype, trivy | The release gates (fixable High and Critical), against the local image |
 | Install test | `make test-install` | docker, kind, kubectl, helm | A real install works end to end on a throwaway cluster |
+| Upgrade test | `make test-upgrade` | as above | The latest **published** chart and image upgrade cleanly to this checkout |
 
 `make test` runs lint + unit + schema (seconds, no cluster). `make test-all`
-runs everything.
+runs everything except `scan`.
 
 ## Tool setup
 
@@ -21,7 +25,10 @@ helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.
 # Helm 3:
 helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.0.3
 
-brew install kubeconform kind     # or download from their GitHub releases
+brew install kubeconform kind shellcheck hadolint grype trivy
+
+# Report-script tooling, hash-pinned
+python3 -m venv .venv && .venv/bin/pip install --require-hashes -r requirements-dev.txt
 ```
 
 ## Template unit tests
@@ -93,6 +100,16 @@ On failure it prints pod status, events and logs for every container.
 `KEEP_CLUSTER=1` keeps the cluster for inspection; `SKIP_BUILD=1` reuses an
 existing image.
 
+### Upgrade test
+
+`FROM_PUBLISHED=1` (`make test-upgrade`) installs the latest chart from
+`oci://ghcr.io/jaturu/charts/bookstack` with its published image, runs
+`helm test`, then loads this checkout's image and upgrades to this checkout's
+chart, checking the same things as the fresh install. It catches what hurts most
+in production: renamed Secrets or PVCs, values or templates that no longer
+accept an existing release, and migrations that fail on real data.
+`PUBLISHED_VERSION=0.1.0` pins the starting version.
+
 `helm test` also works against any real release:
 
 ```console
@@ -106,9 +123,11 @@ request and push to `main`:
 
 | Job | Runs |
 |-----|------|
-| `chart` | lint, unit tests, schema validation, chart README check; on pull requests also `ct lint` (Chart.yaml schema, yamllint, **chart version bump required** when the chart changed) |
-| `image (amd64)`, `image (arm64)` | Native build and the image contract tests on each architecture |
-| `install on kind` | `tests/install.sh`, after the other jobs pass |
+| `lint` | shellcheck, hadolint (checksum-pinned binary), ruff, report-script tests |
+| `chart` | lint, unit tests, schema validation, chart README check, Trivy secret/misconfig scan of the tree (renders the chart); on pull requests also `ct lint` (Chart.yaml schema, yamllint, **chart version bump required** when the chart changed) |
+| `image (amd64)`, `image (arm64)` | Native build, image contract tests, then the release gates: Syft SBOM, Grype (fixable High+), Trivy (fixable HIGH/CRITICAL) |
+| `install + upgrade on kind` | `tests/install.sh`, then the upgrade test from the latest published release |
 
-`ct.yaml` and `charts/bookstack/ci/default-values.yaml` configure
-[chart-testing](https://github.com/helm/chart-testing).
+All actions are pinned by commit SHA with the version in a comment; Dependabot
+updates both weekly. `ct.yaml` and `charts/bookstack/ci/default-values.yaml`
+configure [chart-testing](https://github.com/helm/chart-testing).

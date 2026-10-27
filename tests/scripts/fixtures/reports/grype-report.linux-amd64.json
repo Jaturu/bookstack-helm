@@ -1,0 +1,276 @@
+{
+  "descriptor": {
+    "name": "grype",
+    "version": "0.116.0",
+    "timestamp": "2026-08-05T06:28:49.467313-04:00",
+    "db": {
+      "status": {
+        "built": "2026-08-05T07:04:14Z",
+        "schemaVersion": "v6.1.9"
+      }
+    }
+  },
+  "distro": {
+    "name": "alpine",
+    "version": "3.24.1",
+    "idLike": [
+      "alpine"
+    ]
+  },
+  "matches": [
+    {
+      "vulnerability": {
+        "id": "CVE-2025-15366",
+        "severity": "Medium",
+        "fix": {
+          "versions": [
+            "3.15.0a6"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "3.15.0a6",
+              "date": "2026-03-03",
+              "kind": "first-observed"
+            }
+          ]
+        }
+      },
+      "artifact": {
+        "name": "python",
+        "version": "3.13.14"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2025-15367",
+        "severity": "Medium",
+        "fix": {
+          "versions": [
+            "3.15.0a6"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "3.15.0a6",
+              "date": "2026-03-03",
+              "kind": "first-observed"
+            }
+          ]
+        }
+      },
+      "artifact": {
+        "name": "python",
+        "version": "3.13.14"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2025-60876",
+        "severity": "Medium",
+        "fix": {
+          "versions": [],
+          "state": ""
+        }
+      },
+      "artifact": {
+        "name": "busybox",
+        "version": "1.37.0-r31"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2025-60876",
+        "severity": "Medium",
+        "fix": {
+          "versions": [],
+          "state": ""
+        }
+      },
+      "artifact": {
+        "name": "busybox-binsh",
+        "version": "1.37.0-r31"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2025-60876",
+        "severity": "Medium",
+        "fix": {
+          "versions": [],
+          "state": ""
+        }
+      },
+      "artifact": {
+        "name": "ssl_client",
+        "version": "1.37.0-r31"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2026-4360",
+        "severity": "Medium",
+        "fix": {
+          "versions": [],
+          "state": ""
+        }
+      },
+      "artifact": {
+        "name": "python",
+        "version": "3.13.14"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2026-6879",
+        "severity": "Low",
+        "fix": {
+          "versions": [],
+          "state": ""
+        }
+      },
+      "artifact": {
+        "name": "python",
+        "version": "3.13.14"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2026-12003",
+        "severity": "Medium",
+        "fix": {
+          "versions": [
+            "3.15.0b3"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "3.15.0b3",
+              "date": "2026-07-01",
+              "kind": "first-observed"
+            }
+          ]
+        }
+      },
+      "artifact": {
+        "name": "python",
+        "version": "3.13.14"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2026-0864",
+        "severity": "Medium",
+        "fix": {
+          "versions": [
+            "3.15.0b4"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "3.15.0b4",
+              "date": "2026-07-29",
+              "kind": "first-observed"
+            }
+          ]
+        }
+      },
+      "artifact": {
+        "name": "python",
+        "version": "3.13.14"
+      }
+    }
+  ],
+  "ignoredMatches": [
+    {
+      "vulnerability": {
+        "id": "CVE-2026-11940",
+        "severity": "High",
+        "fix": {
+          "versions": [
+            "3.15.0b4"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "3.15.0b4",
+              "date": "2026-07-29",
+              "kind": "first-observed"
+            }
+          ]
+        }
+      },
+      "artifact": {
+        "name": "python",
+        "version": "3.13.14"
+      },
+      "appliedIgnoreRules": [
+        {
+          "vulnerability": "CVE-2026-11940",
+          "reason": "tarfile is never imported, so unreachable. Tracked in #5, retired by #7",
+          "namespace": ""
+        }
+      ]
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2026-11972",
+        "severity": "High",
+        "fix": {
+          "versions": [
+            "3.15.0b4"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "3.15.0b4",
+              "date": "2026-07-29",
+              "kind": "first-observed"
+            }
+          ]
+        }
+      },
+      "artifact": {
+        "name": "python",
+        "version": "3.13.14"
+      },
+      "appliedIgnoreRules": [
+        {
+          "vulnerability": "CVE-2026-11972",
+          "reason": "tarfile is never imported, so unreachable. Tracked in #5, retired by #7",
+          "namespace": ""
+        }
+      ]
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2026-15308",
+        "severity": "High",
+        "fix": {
+          "versions": [
+            "3.15.0"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "3.15.0",
+              "date": "2026-07-11",
+              "kind": "first-observed"
+            }
+          ]
+        }
+      },
+      "artifact": {
+        "name": "python",
+        "version": "3.13.14"
+      },
+      "appliedIgnoreRules": [
+        {
+          "vulnerability": "CVE-2026-15308",
+          "reason": "no 3.13 backport available. Tracked in #5, retired by #7",
+          "namespace": ""
+        }
+      ]
+    }
+  ]
+}

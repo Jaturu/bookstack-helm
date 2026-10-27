@@ -19,11 +19,15 @@ ARG PHP_PACKAGES="cli curl gd mbstring mysql opcache xml zip"
 # ---------------------------------------------------------------------------
 FROM debian:${DEBIAN_SUITE}-slim AS build
 
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 ARG PHP_VERSION
 ARG PHP_PACKAGES
 ARG BOOKSTACK_VERSION
 ARG BOOKSTACK_REPO=https://source.bookstackapp.com/bookstack.git
 
+# The package list is expanded unquoted on purpose: one word per package.
+# hadolint ignore=SC2046
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates git unzip \
@@ -59,6 +63,8 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 FROM debian:${DEBIAN_SUITE}-slim AS runtime
 
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 ARG PHP_VERSION
 ARG PHP_PACKAGES
 ARG BOOKSTACK_VERSION
@@ -69,6 +75,8 @@ LABEL org.opencontainers.image.title="bookstack" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${BOOKSTACK_VERSION}"
 
+# The package list is expanded unquoted on purpose: one word per package.
+# hadolint ignore=SC2046
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates "php${PHP_VERSION}-fpm" \
@@ -98,13 +106,12 @@ COPY --from=build /var/www/bookstack /var/www/bookstack
 #   storage/          – sessions, cache, logs, secure uploads (PVC in the chart)
 #   bootstrap/cache/  – Laravel compiled config/services
 #   public/uploads/   – system images (app logo), shared with nginx (PVC subPath)
+WORKDIR /var/www/bookstack
 RUN set -eux; \
-    cd /var/www/bookstack; \
     mkdir -p public/uploads; \
     chown -R www-data:www-data storage bootstrap/cache public/uploads; \
     chmod -R u+rwX,go-w storage bootstrap/cache public/uploads
 
-WORKDIR /var/www/bookstack
 USER 33:33
 EXPOSE 9000
 CMD ["php-fpm", "--nodaemonize", "--force-stderr"]
