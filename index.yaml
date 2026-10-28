@@ -3,6 +3,31 @@ entries:
   bookstack:
   - apiVersion: v2
     appVersion: v26.09.2
+    created: "2026-10-28T09:04:43.914723694Z"
+    description: BookStack wiki on a non-root php-fpm image with an nginx-unprivileged
+      sidecar, optional built-in MariaDB (official image), and Gateway API HTTPRoute
+      support.
+    digest: b902738ae78d988b636b056722e78648cd802fb8185c865240e7e88e38a50a23
+    home: https://github.com/Jaturu/bookstack-helm
+    keywords:
+    - bookstack
+    - wiki
+    - documentation
+    - knowledge-base
+    kubeVersion: '>=1.29.0-0'
+    maintainers:
+    - name: Jaturu
+      url: https://github.com/Jaturu
+    name: bookstack
+    sources:
+    - https://github.com/Jaturu/bookstack-helm
+    - https://codeberg.org/bookstack/bookstack
+    type: application
+    urls:
+    - https://github.com/Jaturu/bookstack-helm/releases/download/bookstack-0.1.2/bookstack-0.1.2.tgz
+    version: 0.1.2
+  - apiVersion: v2
+    appVersion: v26.09.2
     created: "2026-10-28T08:46:32.706341072Z"
     description: BookStack wiki on a non-root php-fpm image with an nginx-unprivileged
       sidecar, optional built-in MariaDB (official image), and Gateway API HTTPRoute
@@ -51,4 +76,4 @@ entries:
     urls:
     - https://github.com/Jaturu/bookstack-helm/releases/download/bookstack-0.1.0/bookstack-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-28T08:46:32.706348116Z"
+generated: "2026-10-28T09:04:43.914736839Z"
