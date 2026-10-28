@@ -28,14 +28,17 @@ helm install wiki bookstack/bookstack \
 
 Then expose it with an HTTPRoute or Ingress (see [Exposure](docs/exposure.md))
 and sign in as `admin@admin.com` / `password`. Change both immediately.
+For a production install, follow [Installing](docs/installing.md).
 
 ## Documentation
 
 - [Chart README and values reference](charts/bookstack/README.md)
+- [Installing](docs/installing.md): a production install behind a gateway, from namespace to first login
 - [Architecture](docs/architecture.md): pod layout, volumes, security model, probes
 - [Storage](docs/storage.md): upload storage modes, S3, upload size limit
 - [Database](docs/database.md): built-in or external database, secrets, backup and restore
 - [Exposure](docs/exposure.md): HTTPRoute, Ingress, TLS, trusted proxies
+- [Email](docs/email.md): SMTP settings, the password Secret, testing
 - [Upgrading](docs/upgrading.md): BookStack and MariaDB upgrades, uninstalling
 - [Image](docs/image.md): how the container image is built and versioned
 - [Testing](docs/testing.md): unit, schema, image and install tests

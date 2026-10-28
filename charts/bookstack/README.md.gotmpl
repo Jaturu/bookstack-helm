@@ -94,10 +94,12 @@ ingress:
 
 | Guide | Covers |
 |-------|--------|
+| [Installing](https://github.com/Jaturu/bookstack-helm/blob/main/docs/installing.md) | A production install behind a gateway, from namespace to first login |
 | [Architecture](https://github.com/Jaturu/bookstack-helm/blob/main/docs/architecture.md) | Pod layout, volumes, security model, probes |
 | [Storage](https://github.com/Jaturu/bookstack-helm/blob/main/docs/storage.md) | Upload storage modes and their permission behaviour, S3 / ObjectBucketClaim |
 | [Database](https://github.com/Jaturu/bookstack-helm/blob/main/docs/database.md) | Built-in vs external database, secrets, backup and restore |
 | [Exposure](https://github.com/Jaturu/bookstack-helm/blob/main/docs/exposure.md) | HTTPRoute and Ingress, TLS, trusted proxies, upload size limits |
+| [Email](https://github.com/Jaturu/bookstack-helm/blob/main/docs/email.md) | SMTP settings, the password Secret, testing |
 | [Upgrading](https://github.com/Jaturu/bookstack-helm/blob/main/docs/upgrading.md) | BookStack and MariaDB upgrades, what uninstall leaves behind |
 | [Image](https://github.com/Jaturu/bookstack-helm/blob/main/docs/image.md) | How the container image is built and versioned |
 
