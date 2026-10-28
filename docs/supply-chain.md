@@ -40,7 +40,7 @@ Release, `image-<appVersion>-<build>`, with a rendered summary of the scans.
 
 Defined in [`.github/workflows/release.yaml`](../.github/workflows/release.yaml),
 triggered by a merge to `main` that touches `charts/`, `image/` or
-`.grype-ignore.yaml`, or by hand with **force-image** to pick up Debian
+`.grype-ignore.yaml`, or by hand with **force-image** to pick up Alpine
 security updates.
 
 `plan` decides whether the image needs building: forced, `image/` or the
@@ -113,10 +113,10 @@ the index, because that carries the attestations into the published image.
 **Waiting before verification.** The registry does not serve a freshly written
 referrer immediately. The verify step retries, bounded by a timeout.
 
-**Gates block on fixable findings only.** The base is Debian, and Debian
-marks many High and Critical CVEs won't-fix or leaves them unfixed for a
-while. Nothing in the image can be upgraded to clear those, so a gate on them
-would fail every build forever. The gates therefore run with Grype
+**Gates block on fixable findings only.** A distribution can leave a High or
+Critical CVE unfixed for a while, or mark it won't-fix. Nothing in the image
+can be upgraded to clear those, so a gate on them would fail a build until
+the distribution acts. The gates therefore run with Grype
 `only-fixed` and Trivy `--ignore-unfixed`: a release stops only when a fixed
 package exists and the image does not have it. A rebuild normally clears that.
 
@@ -124,6 +124,13 @@ Each scanner runs twice: once without the filter for the full report, once
 with it as the gate. The full reports keep every finding, unfixed ones
 included, and Grype still records suppressed findings under `ignoredMatches`
 with the rule that hid them. The release report and status page show them all.
+
+**Reading Alpine scan results.** Alpine's security database mainly records
+vulnerabilities that already have a fixed package. Unfixed ones are reported
+less consistently than on Debian, which publishes a status for every CVE. Low
+counts on the Alpine image therefore reflect both a smaller, faster-patched
+package set and less data about unfixed issues; they are not a guarantee that
+nothing is open.
 
 **The status page uses the same split.** The weekly verdict turns red only
 for High or Critical findings with a fix available. Unfixed High or Critical

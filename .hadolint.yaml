@@ -1,6 +1,6 @@
 # hadolint configuration for image/Dockerfile.
 ignored:
-  # Pinning Debian package versions breaks the build every time Debian ships a
+  # Pinning Alpine package versions breaks the build every time Alpine ships a
   # security update, and the image is rebuilt to pick those updates up. The
-  # suite (trixie) and PHP minor version are pinned instead, via build args.
-  - DL3008
+  # Alpine release and PHP minor version are pinned instead, via build args.
+  - DL3018

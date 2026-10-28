@@ -12,7 +12,7 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
-  # Base images in image/Dockerfile (debian:<suite>-slim, composer:2).
+  # Base images in image/Dockerfile (alpine:<release>, composer:2).
   - package-ecosystem: "docker"
     directory: "/image"
     schedule:

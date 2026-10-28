@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       force-image:
-        description: Rebuild the image even if image/ is unchanged (picks up Debian security updates)
+        description: Rebuild the image even if image/ is unchanged (picks up Alpine security updates)
         type: boolean
         default: false
 
@@ -179,12 +179,12 @@ jobs:
 
       # --- Vulnerability scans (Grype + Trivy) ---
 
-      # The gates block only on findings with a fix to move to. Debian's
-      # won't-fix and not-yet-fixed findings are recorded in the full
+      # The gates block only on findings with a fix to move to. Findings the
+      # distribution has not fixed (won't-fix or not yet) are recorded in the full
       # reports and on the status page, but cannot be acted on.
       # The report pass runs Grype directly: scan-action annotates every run
       # whose findings exceed its cutoff as a warning, even with fail-build
-      # off, which would flag every release while Debian has unfixed CVEs.
+      # off, which would flag every release that has unfixed CVEs.
       - name: Install Grype
         id: grype
         uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439  # v7.4.2

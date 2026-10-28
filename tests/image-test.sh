@@ -37,7 +37,7 @@ check "ini files in /etc/bookstack/php.d override the image (cli + fpm)" \
   bash -c "printf 'upload_max_filesize = 77M\n' > /tmp/zz-imgtest.ini && \
     docker run --rm --read-only --tmpfs /tmp -v /tmp/zz-imgtest.ini:/etc/bookstack/php.d/zz.ini:ro --entrypoint sh '$IMAGE' -c \
     '[ \"\$(php -r \"echo ini_get(\\\"upload_max_filesize\\\");\")\" = 77M ] && php-fpm -i | grep -q \"^upload_max_filesize => 77M\"'"
-check "writable paths are owned by www-data" \
+check "writable paths are owned by uid/gid 33" \
   run "$IMAGE" -c 'for d in storage bootstrap/cache public/uploads; do [ "$(stat -c %u:%g $d)" = "33:33" ] || { echo "$d"; exit 1; }; done'
 check "application code is not writable by the runtime user" \
   run "$IMAGE" -c 'for p in artisan app vendor public/index.php; do [ ! -w "$p" ] || { echo "$p writable"; exit 1; }; [ "$(stat -c %u $p)" = 0 ] || { echo "$p not root-owned"; exit 1; }; done'

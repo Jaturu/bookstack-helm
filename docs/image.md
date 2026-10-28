@@ -9,16 +9,22 @@ image.
 
 | Item | Value |
 |------|-------|
-| Base | `debian:trixie-slim` |
-| PHP | Debian's `php8.4-fpm` and `php8.4-cli`, with `curl gd mbstring mysql opcache xml zip` |
+| Base | `alpine:3.24` |
+| PHP | Alpine's `php84` and `php84-fpm`, with one package per extension (see `PHP_PACKAGES` below) |
 | BookStack | The release tag named by `appVersion` in `charts/bookstack/Chart.yaml` |
-| Runs as | uid/gid 33 (`www-data`) |
+| Runs as | uid/gid 33, the `www-data` ids of the earlier Debian-based images, so existing volumes stay writable |
 | Listens | php-fpm FastCGI on `127.0.0.1:9000` only |
 | App path | `/var/www/bookstack` |
 | Command | `php-fpm --nodaemonize --force-stderr` |
 
 The image ships no web server and no compiler toolchain. Git and Composer
 are used only in the build stage and are not in the final image.
+
+Until October 2026 the image was built on `debian:trixie-slim` with Debian's
+PHP packages; builds `v26.09.2-1` and `-2` are Debian-based. Alpine follows
+upstream PHP patch releases closely and installs far fewer packages, so there
+is less to patch. Charts before 0.1.3 do not work with the Alpine images: their
+`copy-assets` step uses a GNU `cp` option that BusyBox lacks.
 
 ## Version: one source
 
@@ -43,9 +49,9 @@ The [Dockerfile](../image/Dockerfile) has two stages.
 
 **build**
 
-1. Installs the same PHP packages as the runtime, plus git and unzip, so
-   Composer resolves dependencies against exactly the extensions the image
-   will have.
+1. Installs the same PHP packages as the runtime, plus `php84-phar`, git and
+   unzip, so Composer resolves dependencies against exactly the extensions
+   the image will have. A missing extension fails `composer install`.
 2. Clones the release tag from `source.bookstackapp.com` (shallow, `.git`
    removed).
 3. Runs `composer install --no-dev --optimize-autoloader`, with the AWS SDK's
@@ -58,8 +64,9 @@ The [Dockerfile](../image/Dockerfile) has two stages.
 
 **runtime**
 
-1. Installs `php8.4-fpm` and the extension packages, removes Debian's default
-   fpm pool, and verifies the required extensions load.
+1. Installs `php84-fpm` and the extension packages, removes Alpine's default
+   fpm pool, links `php` and `php-fpm` to the versioned binaries, and
+   verifies key extensions load.
 2. Installs the image's PHP configuration (below).
 3. Copies the application in, **owned by root**. Only `storage/`,
    `bootstrap/cache/` and `public/uploads/` are made writable by `www-data`.
@@ -69,11 +76,12 @@ The [Dockerfile](../image/Dockerfile) has two stages.
 
 | Order | File | Set by |
 |-------|------|--------|
-| 1 | `/etc/php/8.4/{fpm,cli}/php.ini` | Debian defaults |
-| 2 | `/etc/php/8.4/{fpm,cli}/conf.d/99-bookstack.ini` | Image: upload limits (50M), memory, opcache, `expose_php = Off` |
+| 1 | `/etc/php84/php.ini` | Alpine defaults |
+| 2 | `/etc/php84/conf.d/99-bookstack.ini` | Image: upload limits (50M), memory, opcache, `expose_php = Off` |
 | 3 | `/etc/bookstack/php.d/*.ini` | **Chart**: upload limits from `bookstack.uploadLimitMB`, plus `php.extraIni` |
 
-`PHP_INI_SCAN_DIR=":/etc/bookstack/php.d"` appends directory 3 to each SAPI's
+Alpine's CLI and php-fpm share one `php.ini` and one `conf.d`.
+`PHP_INI_SCAN_DIR=":/etc/bookstack/php.d"` appends directory 3 to the
 built-in scan path. Later files win, so the chart's values override the
 image's without depending on the PHP version in the path.
 
@@ -99,9 +107,9 @@ Other build args, rarely changed:
 
 | Arg | Default | Purpose |
 |-----|---------|---------|
-| `DEBIAN_SUITE` | `trixie` | Debian release for both stages |
-| `PHP_VERSION` | `8.4` | Must be the PHP version that suite ships |
-| `PHP_PACKAGES` | `cli curl gd mbstring mysql opcache xml zip` | Extension packages, without the `phpX.Y-` prefix |
+| `ALPINE_VERSION` | `3.24` | Alpine release for both stages |
+| `PHP_VERSION` | `84` | PHP package series (`php84`); must be one that release ships |
+| `PHP_PACKAGES` | `ctype curl dom fileinfo gd iconv mbstring mysqlnd opcache openssl pdo pdo_mysql session simplexml tokenizer xml xmlreader xmlwriter zip` | Extension packages, without the `php84-` prefix |
 | `BOOKSTACK_REPO` | `https://source.bookstackapp.com/bookstack.git` | Source repository |
 
 ## Releasing a new BookStack version
@@ -110,7 +118,7 @@ Other build args, rarely changed:
    version, extensions).
 2. Edit `appVersion` in `charts/bookstack/Chart.yaml` and bump the chart
    `version`.
-3. If requirements changed, adjust `PHP_VERSION`, `DEBIAN_SUITE` or
+3. If requirements changed, adjust `PHP_VERSION`, `ALPINE_VERSION` or
    `PHP_PACKAGES` in the Dockerfile.
 4. `make test-all`: unit, schema, image and install tests (see
    [Testing](testing.md)).
@@ -131,6 +139,7 @@ this image's contract:
 
 - application at `/var/www/bookstack`, with `public/` and `bootstrap/cache/`
   readable for the init container to copy;
+- a POSIX `sh` with `cp`, `find` and `mkdir`, for the `copy-assets` step;
 - php-fpm in the foreground on `127.0.0.1:9000`, with `ping.path = /fpm-ping`;
 - runs as a non-root uid that can write `storage/`, `bootstrap/cache/` and
   `public/uploads/` (adjust `podSecurityContext` if it isn't 33);

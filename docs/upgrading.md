@@ -51,6 +51,16 @@ kubectl -n bookstack logs deploy/wiki-bookstack -c wait-for-database
 kubectl -n bookstack logs deploy/wiki-bookstack -c migrate
 ```
 
+### Chart and image compatibility
+
+Image builds from `v26.09.2-3` on are Alpine-based and need chart **0.1.3 or
+later**: older charts seed the storage volume with a GNU-only `cp` option, and
+`copy-assets` fails on BusyBox. Upgrade the chart first, or in the same
+`helm upgrade` as the image. A chart before 0.1.3 that leaves `image.tag` at
+its default follows the moving `<appVersion>` tag, so it picks up the Alpine
+image the next time the pod restarts; pin `image.tag` to `v26.09.2-2` on
+those until the chart is upgraded.
+
 ### Pinning or overriding the version
 
 `image.tag` defaults to the chart's `appVersion`. Setting it explicitly pins

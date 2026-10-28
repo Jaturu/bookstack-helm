@@ -174,9 +174,16 @@ tests:
       - notMatchRegex:
           path: spec.template.spec.initContainers[0].args[0]
           pattern: 'cp -a'
+      # Portable between GNU coreutils and BusyBox: no cp no-overwrite flags
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[0].args[0]
+          pattern: '--update|cp -n|cp -Rn'
       - matchRegex:
           path: spec.template.spec.initContainers[0].args[0]
-          pattern: 'cp -R --update=none /var/www/bookstack/storage/\. /storage/'
+          pattern: 'cd /var/www/bookstack/storage && find \. -type d .*mkdir -p "/storage/\$d"'
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].args[0]
+          pattern: '\[ -e "/storage/\$f" \] \|\| cp "\$f" "/storage/\$f"'
       - contains:
           path: spec.template.spec.initContainers[0].volumeMounts
           content: { name: data, mountPath: /storage, subPath: storage }
