@@ -6,7 +6,7 @@ description: >-
 type: application
 
 # Chart version (SemVer) – bump on every chart change.
-version: 0.1.1
+version: 0.1.2
 
 # BookStack release the chart is built and tested against. The default image
 # tag is this value, and the image build in image/ uses the same version.

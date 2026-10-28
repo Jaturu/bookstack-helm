@@ -37,6 +37,12 @@ What happens:
    the existing database.
 3. php-fpm and nginx start, and the pod becomes Ready once `/status` passes.
 
+The built-in MariaDB restarts only when something about it changes: its
+image, its settings or its configuration. Its pod template carries no chart
+or BookStack version labels, so an upgrade that changes neither leaves the
+database running. (Upgrading from 0.1.1 or earlier to 0.1.2 restarts it once,
+because that release removes those labels.)
+
 Watch it:
 
 ```console

@@ -32,6 +32,17 @@ app.kubernetes.io/managed-by: {{ .ctx.Release.Service }}
 app.kubernetes.io/part-of: bookstack
 {{- end }}
 
+{{/* Pod template labels. Call with (dict "ctx" $ "component" "app")
+     Only labels that stay the same across chart and app versions: any change
+     to a pod template restarts its pods, so the chart and version labels stay
+     on the Deployment and StatefulSet objects. Otherwise every chart upgrade
+     would restart MariaDB even when nothing about it changed. */}}
+{{- define "bookstack.podLabels" -}}
+{{ include "bookstack.selectorLabels" . }}
+app.kubernetes.io/managed-by: {{ .ctx.Release.Service }}
+app.kubernetes.io/part-of: bookstack
+{{- end }}
+
 {{/* Selector labels. Call with (dict "ctx" $ "component" "app") */}}
 {{- define "bookstack.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "bookstack.name" .ctx }}

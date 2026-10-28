@@ -14,6 +14,22 @@ tests:
     asserts:
       - hasDocuments: { count: 0 }
 
+  - it: keeps version labels off the pod template, so chart upgrades alone do not restart MariaDB
+    template: mariadb-statefulset.yaml
+    chart:
+      version: 9.9.9
+      appVersion: v99.01
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels
+          value:
+            app.kubernetes.io/name: bookstack
+            app.kubernetes.io/instance: wiki
+            app.kubernetes.io/component: mariadb
+            app.kubernetes.io/managed-by: Helm
+            app.kubernetes.io/part-of: bookstack
+      - equal: { path: 'metadata.labels["helm.sh/chart"]', value: bookstack-9.9.9 }
+
   - it: runs a single-replica StatefulSet behind a headless Service
     asserts:
       - equal: { path: spec.replicas, value: 1 }

@@ -16,7 +16,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "bookstack.labels" (dict "ctx" $ "component" "mariadb") | nindent 8 }}
+        {{- include "bookstack.podLabels" (dict "ctx" $ "component" "mariadb") | nindent 8 }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/mariadb-configmap.yaml") . | sha256sum }}
     spec:

@@ -76,6 +76,23 @@ tests:
           path: spec.template.spec.containers[?(@.name == "nginx")].image
           value: docker.io/nginxinc/nginx-unprivileged@sha256:def
 
+  - it: keeps version labels off the pod template, so chart upgrades alone do not restart it
+    template: deployment.yaml
+    chart:
+      version: 9.9.9
+      appVersion: v99.01
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels
+          value:
+            app.kubernetes.io/name: bookstack
+            app.kubernetes.io/instance: wiki
+            app.kubernetes.io/component: app
+            app.kubernetes.io/managed-by: Helm
+            app.kubernetes.io/part-of: bookstack
+      - equal: { path: 'metadata.labels["helm.sh/chart"]', value: bookstack-9.9.9 }
+      - equal: { path: 'metadata.labels["app.kubernetes.io/version"]', value: v99.01 }
+
   # --------------------------------------------------------- init containers
   - it: runs copy-assets, wait-for-database, then migrate, in that order
     template: deployment.yaml
