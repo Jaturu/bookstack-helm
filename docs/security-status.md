@@ -4,7 +4,7 @@ No fixable High or Critical findings. 45 High or Critical finding(s) have no fix
 
 Release `v26.09.2-2`, published as `ghcr.io/jaturu/bookstack:v26.09.2-2` and `ghcr.io/jaturu/bookstack:latest`.
 Manifest list `sha256:26b3090550c997f4fa88b19cb9724f8659b8ccba907af60b7cd8cc18674e1158`.
-Re-scanned 2026-10-27 13:20 UTC against a vulnerability database built 2026-10-27 06:30 UTC.
+Re-scanned 2026-10-28 10:00 UTC against a vulnerability database built 2026-10-28 06:23 UTC.
 
 This page is regenerated on a schedule from the CycloneDX SBOM attached to the published image, so it reflects what the scanners know now rather than what they knew at build time. It is generated output and is not signed. The per-release pages under Releases are the build-time snapshots and do not change. Counts are of distinct vulnerabilities: one reported by both scanners, or on several platforms, is counted once, at the higher severity either scanner gives.
 
