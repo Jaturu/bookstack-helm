@@ -71,17 +71,21 @@ jobs:
 
       # Report only. A finding must reach the page rather than kill the run,
       # and the verdict step below is what turns a real one red.
-      - name: Grype re-scan
-        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439  # v7.4.2
+      # Grype directly, not scan-action, which would annotate every run with
+      # findings above its cutoff as a warning even with fail-build off.
+      - name: Install Grype
+        id: grype
+        uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439  # v7.4.2
         with:
-          sbom: sbom.cyclonedx.${{ env.SLUG }}.json
-          config: .grype-ignore.yaml
-          output-format: json
-          output-file: grype-report.${{ env.SLUG }}.json
-          severity-cutoff: high
           grype-version: ${{ env.GRYPE_VERSION }}
-          fail-build: false
           cache-db: true
+
+      - name: Grype re-scan
+        env:
+          GRYPE: ${{ steps.grype.outputs.cmd }}
+        run: |
+          "$GRYPE" "sbom:sbom.cyclonedx.${SLUG}.json" --config .grype-ignore.yaml \
+            --output json --file "grype-report.${SLUG}.json"
 
       - name: Trivy re-scan
         run: |

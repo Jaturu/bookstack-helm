@@ -182,17 +182,22 @@ jobs:
       # The gates block only on findings with a fix to move to. Debian's
       # won't-fix and not-yet-fixed findings are recorded in the full
       # reports and on the status page, but cannot be acted on.
-      - name: Grype vulnerability scan (full report)
-        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439  # v7.4.2
+      # The report pass runs Grype directly: scan-action annotates every run
+      # whose findings exceed its cutoff as a warning, even with fail-build
+      # off, which would flag every release while Debian has unfixed CVEs.
+      - name: Install Grype
+        id: grype
+        uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439  # v7.4.2
         with:
-          sbom: sbom.cyclonedx.${{ env.SLUG }}.json
-          config: .grype-ignore.yaml
-          output-format: json
-          output-file: grype-report.${{ env.SLUG }}.json
-          severity-cutoff: high
           grype-version: ${{ env.GRYPE_VERSION }}
-          fail-build: false
           cache-db: true
+
+      - name: Grype vulnerability scan (full report)
+        env:
+          GRYPE: ${{ steps.grype.outputs.cmd }}
+        run: |
+          "$GRYPE" "sbom:sbom.cyclonedx.${SLUG}.json" --config .grype-ignore.yaml \
+            --output json --file "grype-report.${SLUG}.json"
 
       - name: Grype vulnerability scan (blocking gate, fixable only)
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439  # v7.4.2
