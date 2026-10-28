@@ -321,6 +321,12 @@ replicaCount: 1
 migrations:
   # -- Run database migrations in an init container before BookStack starts.
   enabled: true
+  waitForDatabase:
+    # -- Wait in an init container until the database accepts a login before
+    # migrating. Avoids failed migrate attempts while MariaDB initialises.
+    enabled: true
+    # -- How long to wait, in seconds, before failing the pod start.
+    timeoutSeconds: 300
 
 resources:
   ## php-fpm container

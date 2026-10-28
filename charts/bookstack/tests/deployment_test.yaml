@@ -77,23 +77,78 @@ tests:
           value: docker.io/nginxinc/nginx-unprivileged@sha256:def
 
   # --------------------------------------------------------- init containers
-  - it: runs copy-assets then migrate, in that order
+  - it: runs copy-assets, wait-for-database, then migrate, in that order
     template: deployment.yaml
     asserts:
-      - lengthEqual: { path: spec.template.spec.initContainers, count: 2 }
+      - lengthEqual: { path: spec.template.spec.initContainers, count: 3 }
       - equal: { path: 'spec.template.spec.initContainers[0].name', value: copy-assets }
-      - equal: { path: 'spec.template.spec.initContainers[1].name', value: migrate }
+      - equal: { path: 'spec.template.spec.initContainers[1].name', value: wait-for-database }
+      - equal: { path: 'spec.template.spec.initContainers[2].name', value: migrate }
       - equal:
-          path: spec.template.spec.initContainers[1].command
+          path: spec.template.spec.initContainers[2].command
           value: ["php", "artisan", "migrate", "--force", "--no-interaction"]
 
-  - it: omits the migrate init container when migrations are disabled
+  - it: omits both database init containers when migrations are disabled
     template: deployment.yaml
     set:
       migrations.enabled: false
     asserts:
       - lengthEqual: { path: spec.template.spec.initContainers, count: 1 }
       - equal: { path: 'spec.template.spec.initContainers[0].name', value: copy-assets }
+
+  - it: can skip the database wait and still migrate
+    template: deployment.yaml
+    set:
+      migrations.waitForDatabase.enabled: false
+    asserts:
+      - lengthEqual: { path: spec.template.spec.initContainers, count: 2 }
+      - equal: { path: 'spec.template.spec.initContainers[1].name', value: migrate }
+
+  - it: runs the bundled wait script with php -r, without the opening tag
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "wait-for-database")].command[0]
+          value: php
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "wait-for-database")].command[1]
+          value: -r
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "wait-for-database")].command[2]
+          pattern: 'new PDO\('
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "wait-for-database")].command[2]
+          pattern: '<\?php'
+
+  - it: gives the wait the app's database settings plus its timeout
+    template: deployment.yaml
+    set:
+      migrations.waitForDatabase.timeoutSeconds: 90
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "wait-for-database")].envFrom[0].configMapRef.name
+          value: wiki-bookstack
+      - contains:
+          path: spec.template.spec.initContainers[?(@.name == "wait-for-database")].env
+          content:
+            name: DB_PASSWORD
+            valueFrom: { secretKeyRef: { name: wiki-bookstack-mariadb, key: mariadb-password } }
+      - contains:
+          path: spec.template.spec.initContainers[?(@.name == "wait-for-database")].env
+          content: { name: WAIT_TIMEOUT, value: "90" }
+
+  - it: waits on the external database when MariaDB is disabled
+    template: deployment.yaml
+    set:
+      mariadb.enabled: false
+      externalDatabase.host: db.example.com
+      externalDatabase.existingSecret: ext-db
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[?(@.name == "wait-for-database")].env
+          content:
+            name: DB_PASSWORD
+            valueFrom: { secretKeyRef: { name: ext-db, key: password } }
 
   - it: seeds the storage skeleton onto the PVC without overwriting
     template: deployment.yaml

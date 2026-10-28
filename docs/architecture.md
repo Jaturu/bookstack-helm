@@ -15,6 +15,7 @@ For every configurable value see the
   ┌───────────────── BookStack pod (Deployment, 1 replica) ─────────────────┐
   │                                                                         │
   │  init: copy-assets ── copies public/ and bootstrap/cache into emptyDirs  │
+  │  init: wait-for-database ── until the database accepts a login           │
   │  init: migrate     ── php artisan migrate --force                        │
   │                                                                         │
   │  ┌──────────────── nginx ────────────────┐   ┌──────── bookstack ──────┐ │
@@ -54,14 +55,21 @@ port.
    already there. nginx serves `public/` from its own container;
    `bootstrap/cache` and `storage/` must be writable while the root filesystem
    is read-only.
-2. **`migrate`** runs `php artisan migrate --force`. If the database is not
-   reachable yet (for example the built-in MariaDB is still initialising), it
-   exits non-zero and the kubelet retries it with backoff. No separate wait
-   loop is needed.
-3. **`bookstack`** (php-fpm) and **`nginx`** start.
+2. **`wait-for-database`** retries a database login every two seconds until
+   it succeeds. On a first install the built-in MariaDB spends a minute or so
+   initialising; without the wait, `migrate` would fail and restart with
+   backoff until it was ready. Errors that waiting cannot fix (bad
+   credentials, a missing database) fail at once with a clear message, and
+   the wait gives up after `migrations.waitForDatabase.timeoutSeconds`
+   (default 300). The script is
+   [`charts/bookstack/files/wait-for-database.php`](../charts/bookstack/files/wait-for-database.php),
+   run with the image's own PHP.
+3. **`migrate`** runs `php artisan migrate --force`.
+4. **`bookstack`** (php-fpm) and **`nginx`** start.
 
-The `migrate` init container and the `bookstack` container are rendered from
-the same helpers, so their environment and mounts are always identical.
+`wait-for-database`, `migrate` and `bookstack` get their environment from the
+same helper, so they always use the same database settings; `migrate` and
+`bookstack` also share identical mounts.
 
 ## Request handling
 

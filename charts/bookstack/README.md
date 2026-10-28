@@ -1,6 +1,6 @@
 # bookstack
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v26.09.2](https://img.shields.io/badge/AppVersion-v26.09.2-informational?style=flat-square)
+![Version: 0.1.1](https://img.shields.io/badge/Version-0.1.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v26.09.2](https://img.shields.io/badge/AppVersion-v26.09.2-informational?style=flat-square)
 
 BookStack wiki on a non-root php-fpm image with an nginx-unprivileged sidecar, optional built-in MariaDB (official image), and Gateway API HTTPRoute support.
 
@@ -37,7 +37,7 @@ helm install wiki bookstack/bookstack \
 Or install straight from the OCI registry, without `helm repo add`:
 
 ```console
-helm install wiki oci://ghcr.io/jaturu/charts/bookstack --version 0.1.0 \
+helm install wiki oci://ghcr.io/jaturu/charts/bookstack --version 0.1.1 \
   --namespace bookstack --create-namespace \
   --set bookstack.appUrl=https://wiki.example.com
 ```
@@ -184,6 +184,8 @@ Kubernetes: `>=1.29.0-0`
 | mariadb.securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true}` | MariaDB container security context. /var/lib/mysql, /run/mysqld and /tmp are the only writable paths. |
 | mariadb.tolerations | list | `[]` | Tolerations for the MariaDB pod. |
 | migrations.enabled | bool | `true` | Run database migrations in an init container before BookStack starts. |
+| migrations.waitForDatabase.enabled | bool | `true` | Wait in an init container until the database accepts a login before migrating. Avoids failed migrate attempts while MariaDB initialises. |
+| migrations.waitForDatabase.timeoutSeconds | int | `300` | How long to wait, in seconds, before failing the pod start. |
 | nameOverride | string | `""` | Override the chart name used in resource names. |
 | nginx.image.digest | string | `""` | Optional nginx image digest (sha256:...). Takes precedence over tag. |
 | nginx.image.pullPolicy | string | `"IfNotPresent"` | nginx image pull policy. |

@@ -32,14 +32,16 @@ What happens:
 
 1. The Deployment's `Recreate` strategy stops the old pod. Expect a short
    outage, typically under a minute.
-2. The new pod's `migrate` init container runs `php artisan migrate --force`
-   against the existing database.
+2. The new pod's `wait-for-database` init container confirms the database
+   accepts a login, then `migrate` runs `php artisan migrate --force` against
+   the existing database.
 3. php-fpm and nginx start, and the pod becomes Ready once `/status` passes.
 
 Watch it:
 
 ```console
 kubectl -n bookstack get pods -w
+kubectl -n bookstack logs deploy/wiki-bookstack -c wait-for-database
 kubectl -n bookstack logs deploy/wiki-bookstack -c migrate
 ```
 
@@ -60,6 +62,17 @@ precedence over the tag.
 Only use image tags built from this repository. The chart relies on the
 image's layout: non-root user, paths, the `/etc/bookstack/php.d` scan
 directory, and php-fpm on loopback.
+
+### If the database wait fails
+
+`wait-for-database` exits non-zero in two cases, and its log says which:
+
+- **Access denied or unknown database.** It fails on the first attempt: the
+  password Secret, username or database name does not match the server.
+  Waiting would not help.
+- **Not ready after the timeout.** The server never accepted a connection:
+  check the MariaDB pod (`kubectl -n bookstack get pods`) or, for an external
+  database, its host, port and network policy.
 
 ### If a migration fails
 

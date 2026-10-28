@@ -68,8 +68,29 @@ spec:
             - { name: bootstrap-cache, mountPath: /bootstrap-cache }
             - { name: data, mountPath: /storage, subPath: storage }
         {{- if .Values.migrations.enabled }}
-        # Apply schema migrations before php-fpm starts. If the database is
-        # not ready yet this exits non-zero and the kubelet retries with backoff.
+        {{- with .Values.migrations.waitForDatabase }}
+        {{- if .enabled }}
+        # Block until the database accepts a login. On a first install MariaDB
+        # spends a minute initialising; without this, migrate fails and the
+        # pod restarts until it is ready. Bad credentials fail at once.
+        - name: wait-for-database
+          image: {{ $appImage }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          command:
+            - php
+            - -r
+            - |
+              {{- $.Files.Get "files/wait-for-database.php" | trimPrefix "<?php\n" | nindent 14 }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml $.Values.resources.app | nindent 12 }}
+          {{- include "bookstack.appEnv" (dict "ctx" $ "useS3" false) | nindent 10 }}
+            - name: WAIT_TIMEOUT
+              value: {{ .timeoutSeconds | int | quote }}
+        {{- end }}
+        {{- end }}
+        # Apply schema migrations before php-fpm starts.
         - name: migrate
           image: {{ $appImage }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
