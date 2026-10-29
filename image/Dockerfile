@@ -84,7 +84,7 @@ RUN set -eux; \
     rm -f "/etc/php${PHP_VERSION}/php-fpm.d/www.conf"; \
     [ -e /usr/bin/php ] || ln -s "php${PHP_VERSION}" /usr/bin/php; \
     ln -s "/usr/sbin/php-fpm${PHP_VERSION}" /usr/local/bin/php-fpm; \
-    for m in gd pdo_mysql zip iconv 'Zend OPcache'; do php -m | grep -qx "$m"; done
+    m=$(php -m); for e in gd pdo_mysql zip iconv 'Zend OPcache'; do echo "$m" | grep -qx "$e"; done
 
 COPY php/php-fpm.conf  /etc/php${PHP_VERSION}/php-fpm.conf
 COPY php/bookstack.ini /etc/php${PHP_VERSION}/conf.d/99-bookstack.ini
