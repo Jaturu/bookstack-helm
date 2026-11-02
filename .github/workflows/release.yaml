@@ -224,7 +224,7 @@ jobs:
       # --- Attach to this platform's digest, where tooling looks ---
 
       - name: Install oras
-        uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4  # v2.0.2
+        uses: oras-project/setup-oras@5e2f2482b30b0cb3e14e67f89a80c88c659a7c63  # v2.0.3
         with:
           version: ${{ env.ORAS_VERSION }}
 
@@ -476,7 +476,7 @@ jobs:
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
       - name: Release to GitHub + gh-pages index
-        uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f  # v1.7.0
+        uses: helm/chart-releaser-action@df287104677278f869ca5480bd260358397cc3f9  # v1.8.0
         with:
           charts_dir: charts
           skip_existing: true
