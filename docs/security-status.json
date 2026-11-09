@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "label": "scanned 2026-11-02",
-  "message": "no High or Critical, 2 lower",
-  "color": "brightgreen"
+  "label": "scanned 2026-11-09",
+  "message": "1 High or Critical, action needed",
+  "color": "red"
 }
