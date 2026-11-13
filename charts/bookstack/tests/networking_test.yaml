@@ -52,11 +52,11 @@ tests:
     template: httproute.yaml
     set:
       httpRoute.enabled: true
-      httpRoute.parentRefs: [{ name: chmr-gw, namespace: envoy-gateway-system, sectionName: https }]
+      httpRoute.parentRefs: [{ name: my-gateway, namespace: gateway-system, sectionName: https }]
       httpRoute.hostnames: [wiki.example.com]
     asserts:
       - equal: { path: apiVersion, value: gateway.networking.k8s.io/v1 }
-      - equal: { path: spec.parentRefs, value: [{ name: chmr-gw, namespace: envoy-gateway-system, sectionName: https }] }
+      - equal: { path: spec.parentRefs, value: [{ name: my-gateway, namespace: gateway-system, sectionName: https }] }
       - equal: { path: spec.hostnames, value: [wiki.example.com] }
       - equal:
           path: 'spec.rules[0].backendRefs'
