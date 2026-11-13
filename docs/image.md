@@ -31,7 +31,7 @@ is less to patch. Charts before 0.1.3 do not work with the Alpine images: their
 The BookStack version is set **only** in `charts/bookstack/Chart.yaml`:
 
 ```yaml
-appVersion: "v26.09.2"
+appVersion: "v26.09.3"
 ```
 
 - The Dockerfile's `BOOKSTACK_VERSION` build arg has no default. A build
@@ -64,7 +64,9 @@ The [Dockerfile](../image/Dockerfile) has two stages.
 
 **runtime**
 
-1. Installs `php84-fpm` and the extension packages, removes Alpine's default
+1. Upgrades the base image's packages, so a rebuild picks up Alpine security
+   fixes before the base image itself is rebuilt. Installs `php84-fpm` and the
+   extension packages, removes Alpine's default
    fpm pool, links `php` and `php-fpm` to the versioned binaries, and
    verifies key extensions load.
 2. Installs the image's PHP configuration (below).

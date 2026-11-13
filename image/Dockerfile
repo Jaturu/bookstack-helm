@@ -79,6 +79,7 @@ LABEL org.opencontainers.image.title="bookstack" \
 # The package list is expanded unquoted on purpose: one word per package.
 # hadolint ignore=SC2046
 RUN set -eux; \
+    apk upgrade --no-cache; \
     apk add --no-cache "php${PHP_VERSION}" "php${PHP_VERSION}-fpm" \
         $(for p in ${PHP_PACKAGES}; do printf 'php%s-%s ' "${PHP_VERSION}" "$p"; done); \
     rm -f "/etc/php${PHP_VERSION}/php-fpm.d/www.conf"; \
