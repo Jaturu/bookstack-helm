@@ -55,17 +55,28 @@ Per platform, in `build-platform`:
    once as a gate on fixable High or above.
 5. Scan with Trivy, once for a full report and once as a gate on fixable HIGH
    and CRITICAL.
-6. Attach the SBOM and both reports to that platform's image digest.
+6. On amd64 only, scan the source tree, including the rendered Helm chart, for
+   secrets and misconfiguration with Trivy.
+7. Attach the SBOM and both reports to that platform's image digest.
 
 Once, in `publish-image`:
 
-7. Merge the per-platform digests into the staging tag `sha-<commit>`.
-8. Scan the source tree, including the rendered Helm chart, for secrets and misconfiguration with Trivy.
+8. Merge the per-platform digests into the staging tag `sha-<commit>`.
 9. Sign the manifest and every platform image with keyless cosign, then verify.
 10. Record a GitHub provenance attestation for the manifest.
 11. Claim the build number as the git tag `image-<appVersion>-<build>`.
 12. Promote the manifest digest to `<appVersion>-<build>`, `<appVersion>` and `latest`.
 13. Publish the release report as a GitHub Release.
+
+Every scan, in CI, the release and the weekly re-scan, runs inside the
+`ghcr.io/jaturu/scanners:slim` image, which carries Trivy, Grype and their
+databases and is rebuilt nightly from its own repository. Each job pulls the
+floating tag once, logs both tool versions, and runs every scan in that job
+against the resolved digest through `scripts/scan.sh`, so nothing downloads a
+database at run time. The slim variant leaves out the Trivy Java database,
+which this image has no use for. Grype refuses a database older than five
+days, so if the nightly build stops, CI, releases and the re-scan fail rather
+than scan against stale data.
 
 Then `chart` publishes a new chart version to the GitHub release, the
 `gh-pages` index and the OCI registry, and signs the OCI chart. An already
