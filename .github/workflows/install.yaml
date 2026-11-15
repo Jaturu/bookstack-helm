@@ -1,0 +1,58 @@
+# Install and upgrade tests on a throwaway kind cluster. Kept out of ci for
+# speed: runs when the chart, image or test changes, weekly, and by hand.
+name: install
+
+on:
+  pull_request:
+    paths:
+      - "charts/**"
+      - "image/**"
+      - tests/install.sh
+      - .github/workflows/install.yaml
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - "image/**"
+      - tests/install.sh
+      - .github/workflows/install.yaml
+  schedule:
+    - cron: "41 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HELM_VERSION: v4.3.1
+  KIND_VERSION: v0.33.0
+
+jobs:
+  kind:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: fresh install
+            from-published: ''
+          - name: upgrade from published
+            from-published: '1'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e  # v5.1.0
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Install kind
+        run: |
+          curl -fsSLo kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          sudo install kind /usr/local/bin/kind && rm kind
+      - name: Install test (build, kind, helm test, upgrade, uninstall)
+        env:
+          FROM_PUBLISHED: ${{ matrix.from-published }}
+        run: tests/install.sh
