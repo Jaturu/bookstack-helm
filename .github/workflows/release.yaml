@@ -35,9 +35,9 @@ env:
   IMAGE: ghcr.io/jaturu/bookstack
   CHART_REPO: oci://ghcr.io/jaturu/charts
   HELM_VERSION: v4.3.1
-  TRIVY_VERSION: v0.72.0
-  GRYPE_VERSION: v0.116.0
   SYFT_VERSION: v1.49.0
+  # Trivy and Grype with their databases, rebuilt nightly.
+  SCANNERS_IMAGE: ghcr.io/jaturu/scanners:slim
   COSIGN_VERSION: v3.1.2
   CRANE_VERSION: v0.21.7
   ORAS_VERSION: 1.3.3
@@ -144,21 +144,12 @@ jobs:
           echo "Index pushed:   ${{ steps.build.outputs.digest }}"
           echo "Image manifest: ${img}"
 
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567  # v0.3.1
-        with:
-          version: ${{ env.TRIVY_VERSION }}
-
-      - name: Trivy cache key (daily)
-        id: tcache
-        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Trivy database
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: ~/.cache/trivy
-          key: trivy-db-${{ runner.arch }}-${{ steps.tcache.outputs.day }}
-          restore-keys: trivy-db-${{ runner.arch }}-
+      - name: Pull the scanners image
+        run: |
+          docker pull --quiet "$SCANNERS_IMAGE"
+          ref="$(docker inspect --format '{{index .RepoDigests 0}}' "$SCANNERS_IMAGE")"
+          echo "SCANNERS_REF=${ref}" >> "$GITHUB_ENV"
+          SCANNERS_REF="$ref" scripts/scan.sh sh -c 'trivy --version && grype version'
 
       # --- SBOM (Syft), scanned natively on this arch ---
 
@@ -182,44 +173,32 @@ jobs:
       # The gates block only on findings with a fix to move to. Findings the
       # distribution has not fixed (won't-fix or not yet) are recorded in the full
       # reports and on the status page, but cannot be acted on.
-      # The report pass runs Grype directly: scan-action annotates every run
-      # whose findings exceed its cutoff as a warning, even with fail-build
-      # off, which would flag every release that has unfixed CVEs.
-      - name: Install Grype
-        id: grype
-        uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439  # v7.4.2
-        with:
-          grype-version: ${{ env.GRYPE_VERSION }}
-          cache-db: true
-
       - name: Grype vulnerability scan (full report)
-        env:
-          GRYPE: ${{ steps.grype.outputs.cmd }}
         run: |
-          "$GRYPE" "sbom:sbom.cyclonedx.${SLUG}.json" --config .grype-ignore.yaml \
+          scripts/scan.sh grype "sbom:sbom.cyclonedx.${SLUG}.json" --config .grype-ignore.yaml \
             --output json --file "grype-report.${SLUG}.json"
 
       - name: Grype vulnerability scan (blocking gate, fixable only)
-        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439  # v7.4.2
-        with:
-          sbom: sbom.cyclonedx.${{ env.SLUG }}.json
-          config: .grype-ignore.yaml
-          output-format: table
-          severity-cutoff: high
-          only-fixed: true
-          grype-version: ${{ env.GRYPE_VERSION }}
-          fail-build: true
-          cache-db: true
+        run: |
+          scripts/scan.sh grype "sbom:sbom.cyclonedx.${SLUG}.json" --config .grype-ignore.yaml \
+            --only-fixed --fail-on high --output table
 
+      # Pulled from the registry: the image was pushed by digest, not loaded.
       - name: Trivy image scan (full report)
         run: |
-          trivy image --format json --output "trivy-report.${SLUG}.json" \
-            "${{ env.IMAGE }}@${IMAGE_DIGEST}"
+          scripts/scan.sh trivy image --image-src remote --format json \
+            --output "trivy-report.${SLUG}.json" "${{ env.IMAGE }}@${IMAGE_DIGEST}"
 
       - name: Trivy image scan (blocking gate, fixable only)
         run: |
-          trivy image --format table --severity HIGH,CRITICAL --ignore-unfixed \
-            --exit-code 1 "${{ env.IMAGE }}@${IMAGE_DIGEST}"
+          scripts/scan.sh trivy image --image-src remote --format table \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            "${{ env.IMAGE }}@${IMAGE_DIGEST}"
+
+      # The source tree is the same on every platform, so scan it once.
+      - name: Trivy source scan (secrets and misconfig, incl. the chart)
+        if: matrix.platform == 'linux/amd64'
+        run: scripts/scan.sh trivy fs --scanners secret,misconfig --severity HIGH,CRITICAL --exit-code 1 .
 
       # --- Attach to this platform's digest, where tooling looks ---
 
@@ -335,22 +314,6 @@ jobs:
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
           echo "Manifest digest: ${digest}"
 
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567  # v0.3.1
-        with:
-          version: ${{ env.TRIVY_VERSION }}
-
-      - name: Trivy cache key (daily)
-        id: tcache
-        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Trivy database
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: ~/.cache/trivy
-          key: trivy-db-${{ runner.arch }}-${{ steps.tcache.outputs.day }}
-          restore-keys: trivy-db-${{ runner.arch }}-
-
       - name: Install crane
         uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b  # v0.7
         with:
@@ -360,9 +323,6 @@ jobs:
         uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532  # v4.1.3
         with:
           cosign-release: ${{ env.COSIGN_VERSION }}
-
-      - name: Trivy source scan (secrets and misconfig, incl. the chart)
-        run: trivy fs --scanners secret,misconfig --severity HIGH,CRITICAL --exit-code 1 .
 
       # Digest-scoped work runs first. Nothing below publishes a release tag
       # until the build number is claimed, so a failure here is safe to retry.

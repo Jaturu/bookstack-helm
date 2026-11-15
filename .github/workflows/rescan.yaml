@@ -6,7 +6,8 @@ name: rescan
 # release is safe to run today. See docs/supply-chain.md.
 on:
   schedule:
-    - cron: "23 6 * * 1"
+    # After the nightly scanners build at 06:17 UTC.
+    - cron: "17 8 * * 1"
   workflow_dispatch: {}
 
 permissions:
@@ -18,8 +19,7 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/jaturu/bookstack
-  TRIVY_VERSION: v0.72.0
-  GRYPE_VERSION: v0.116.0
+  SCANNERS_IMAGE: ghcr.io/jaturu/scanners:slim
   CRANE_VERSION: v0.21.7
   ORAS_VERSION: 1.3.3
 
@@ -49,11 +49,6 @@ jobs:
         with:
           version: ${{ env.ORAS_VERSION }}
 
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567  # v0.3.1
-        with:
-          version: ${{ env.TRIVY_VERSION }}
-
       - name: Pull the published SBOM for this platform
         run: |
           digest="$(crane digest --platform '${{ matrix.platform }}' "${IMAGE}:latest")"
@@ -69,27 +64,23 @@ jobs:
           oras pull -o . "${IMAGE}@${referrer}"
           echo "PLATFORM_DIGEST=${digest}" >> "$GITHUB_ENV"
 
+      - name: Pull the scanners image
+        run: |
+          docker pull --quiet "$SCANNERS_IMAGE"
+          ref="$(docker inspect --format '{{index .RepoDigests 0}}' "$SCANNERS_IMAGE")"
+          echo "SCANNERS_REF=${ref}" >> "$GITHUB_ENV"
+          SCANNERS_REF="$ref" scripts/scan.sh sh -c 'trivy --version && grype version'
+
       # Report only. A finding must reach the page rather than kill the run,
       # and the verdict step below is what turns a real one red.
-      # Grype directly, not scan-action, which would annotate every run with
-      # findings above its cutoff as a warning even with fail-build off.
-      - name: Install Grype
-        id: grype
-        uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439  # v7.4.2
-        with:
-          grype-version: ${{ env.GRYPE_VERSION }}
-          cache-db: true
-
       - name: Grype re-scan
-        env:
-          GRYPE: ${{ steps.grype.outputs.cmd }}
         run: |
-          "$GRYPE" "sbom:sbom.cyclonedx.${SLUG}.json" --config .grype-ignore.yaml \
+          scripts/scan.sh grype "sbom:sbom.cyclonedx.${SLUG}.json" --config .grype-ignore.yaml \
             --output json --file "grype-report.${SLUG}.json"
 
       - name: Trivy re-scan
         run: |
-          trivy sbom --format json \
+          scripts/scan.sh trivy sbom --format json \
             --output "trivy-report.${SLUG}.json" \
             "sbom.cyclonedx.${SLUG}.json"
 
