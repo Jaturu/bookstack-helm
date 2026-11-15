@@ -126,7 +126,7 @@ request and push to `main`:
 | `lint` | shellcheck, hadolint (checksum-pinned binary), ruff, report-script tests |
 | `chart` | lint, unit tests, schema validation, chart README check, Trivy secret/misconfig scan of the tree (renders the chart); on pull requests also `ct lint` (Chart.yaml schema, yamllint, **chart version bump required** when the chart changed) |
 | `image (amd64)`, `image (arm64)` | Native build, image contract tests, then the release gates: Syft SBOM, Grype (fixable High+), Trivy (fixable HIGH/CRITICAL) |
-| `install + upgrade on kind` | `tests/install.sh`, then the upgrade test from the latest published release |
+| `kind (fresh install)`, `kind (upgrade from published)` | `tests/install.sh`, and in parallel the upgrade test from the latest published release. Both start without waiting for the other jobs |
 
 All actions are pinned by commit SHA with the version in a comment; Dependabot
 updates both weekly. `ct.yaml` and `charts/bookstack/ci/default-values.yaml`

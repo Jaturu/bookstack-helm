@@ -181,9 +181,17 @@ jobs:
             --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
 
   # --------------------------------------------------------------- install
+  # No needs: it builds its own image, so it runs alongside the other jobs.
   install:
-    name: install + upgrade on kind
-    needs: [lint, chart, image]
+    name: kind (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: fresh install
+            from-published: ''
+          - name: upgrade from published
+            from-published: '1'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -194,7 +202,7 @@ jobs:
         run: |
           curl -fsSLo kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
           sudo install kind /usr/local/bin/kind && rm kind
-      - name: Fresh install (build, kind, helm test, upgrade, uninstall)
+      - name: Install test (build, kind, helm test, upgrade, uninstall)
+        env:
+          FROM_PUBLISHED: ${{ matrix.from-published }}
         run: tests/install.sh
-      - name: Upgrade from the latest published release
-        run: FROM_PUBLISHED=1 SKIP_BUILD=1 tests/install.sh

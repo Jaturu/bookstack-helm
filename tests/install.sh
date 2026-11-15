@@ -48,6 +48,8 @@ diagnostics() {
 cleanup() {
   rc=$?
   [ $rc -ne 0 ] && diagnostics
+  # A failed build leaves cluster creation running in the background.
+  [ -n "${cluster_pid:-}" ] && kill "$cluster_pid" 2>/dev/null && wait "$cluster_pid" 2>/dev/null
   if [ -z "${KEEP_CLUSTER:-}" ]; then
     kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
   else
@@ -59,16 +61,28 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [ -z "${SKIP_BUILD:-}" ]; then
-  step "build $IMAGE"
-  make -s image
-fi
+create_cluster() {
+  if kind get clusters | grep -qx "$CLUSTER"; then
+    kind export kubeconfig --name "$CLUSTER"
+  else
+    kind create cluster --name "$CLUSTER" --wait 120s
+  fi
+}
 
-step "kind cluster $CLUSTER"
-if kind get clusters | grep -qx "$CLUSTER"; then
-  kind export kubeconfig --name "$CLUSTER"
+if [ -z "${SKIP_BUILD:-}" ]; then
+  # The cluster boots while the image builds.
+  step "build $IMAGE, kind cluster $CLUSTER alongside"
+  cluster_log=$(mktemp)
+  create_cluster >"$cluster_log" 2>&1 &
+  cluster_pid=$!
+  make -s image
+  cluster_rc=0; wait "$cluster_pid" || cluster_rc=$?
+  cluster_pid=
+  cat "$cluster_log"; rm -f "$cluster_log"
+  [ "$cluster_rc" -eq 0 ] || fail "kind cluster creation failed"
 else
-  kind create cluster --name "$CLUSTER" --wait 120s
+  step "kind cluster $CLUSTER"
+  create_cluster
 fi
 # In the upgrade test the published image must be what the first install
 # runs, so the local image (same tag) is loaded only right before upgrading.
