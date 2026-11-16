@@ -2,15 +2,15 @@
 
 No High or Critical findings. 1 lower-severity finding(s) recorded below.
 
-Release `v26.09.3-1`, published as `ghcr.io/jaturu/bookstack:v26.09.3-1` and `ghcr.io/jaturu/bookstack:latest`.
-Manifest list `sha256:923e8a4f0fc15bb167087b357d2e7de09c91b0ff371042f409a29d469f8a347c`.
-Re-scanned 2026-11-13 09:37 UTC against a vulnerability database built 2026-11-13 06:20 UTC.
+Release `v26.09.3-2`, published as `ghcr.io/jaturu/bookstack:v26.09.3-2` and `ghcr.io/jaturu/bookstack:latest`.
+Manifest list `sha256:8286dd16e1abb1a5489aef116b982ac5998a08f879ebd957c6d710ac40739a03`.
+Re-scanned 2026-11-16 18:29 UTC against a vulnerability database built 2026-11-16 06:30 UTC.
 
 This page is regenerated on a schedule from the CycloneDX SBOM attached to the published image, so it reflects what the scanners know now rather than what they knew at build time. It is generated output and is not signed. The per-release pages under Releases are the build-time snapshots and do not change. Counts are of distinct vulnerabilities: one reported by both scanners, or on several platforms, is counted once, at the higher severity either scanner gives.
 
 ## linux-amd64
 
-Image digest: `sha256:417d0b50aed79f7385f06ff745109116d613e14c07009a9eed42fa2e57e493a3`
+Image digest: `sha256:99d2e5e0e760dd524ca7e1ebc72b21095b8e02341cb9f390eb5769c259c88bf8`
 
 | CVE | Severity | Packages | Fixed in |
 |---|---|---|---|
