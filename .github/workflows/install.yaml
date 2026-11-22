@@ -17,7 +17,8 @@ on:
       - tests/install.sh
       - .github/workflows/install.yaml
   schedule:
-    - cron: "41 7 * * 1"
+    - cron: "41 2 * * 1"
+      timezone: "America/New_York"
   workflow_dispatch:
 
 permissions:

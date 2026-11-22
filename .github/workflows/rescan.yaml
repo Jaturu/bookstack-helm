@@ -6,8 +6,9 @@ name: rescan
 # release is safe to run today. See docs/supply-chain.md.
 on:
   schedule:
-    # After the nightly scanners build at 06:17 UTC.
-    - cron: "17 8 * * 1"
+    # After the nightly scanners build at 01:17 Eastern.
+    - cron: "27 3 * * 1"
+      timezone: "America/New_York"
   workflow_dispatch: {}
 
 permissions:
