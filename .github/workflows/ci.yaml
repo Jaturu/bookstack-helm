@@ -144,6 +144,9 @@ jobs:
           provenance: false
           cache-from: type=gha,scope=linux/${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=linux/${{ matrix.arch }}
+          # Rebuild the runtime stage every time: its apk upgrade must pick up
+          # current Alpine packages, not the ones in a cached layer.
+          no-cache-filters: runtime
 
       - name: Image contract tests
         run: IMAGE=bookstack:dev tests/image-test.sh
