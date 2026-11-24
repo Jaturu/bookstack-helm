@@ -138,3 +138,34 @@ reach the wiki at the network level:
 
 Inside the wiki, access is governed by BookStack's roles and permissions, and
 by `AUTH_METHOD` if you use OIDC, SAML or LDAP.
+
+## Trusting a private CA
+
+If BookStack calls an HTTPS service whose certificate comes from a private CA,
+such as an OIDC identity provider on an internal network, PHP has to trust that
+CA. Put the CA bundle in a ConfigMap, mount it with `extraVolumes` and
+`extraVolumeMounts`, and point PHP at it with `php.extraIni`:
+
+```yaml
+extraVolumes:
+  - name: ca-bundle
+    configMap:
+      name: my-ca-bundle
+      items:
+        - { key: ca-bundle.crt, path: ca-bundle.crt }
+extraVolumeMounts:
+  - { name: ca-bundle, mountPath: /run/trust, readOnly: true }
+php:
+  extraIni: |
+    curl.cainfo = /run/trust/ca-bundle.crt
+    openssl.cafile = /run/trust/ca-bundle.crt
+```
+
+The mount goes on the BookStack container and the `migrate` init container.
+
+- Use `php.extraIni`, not the `SSL_CERT_FILE` environment variable. PHP's curl
+  in this image ignores `SSL_CERT_FILE`.
+- The bundle replaces the default trust store for PHP. If BookStack also talks
+  to public endpoints, such as SMTP or S3, include the public CAs in it.
+- Don't use `subPath` for the mount. Without it, ConfigMap updates reach the
+  pod without a restart.

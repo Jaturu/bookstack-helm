@@ -402,3 +402,27 @@ tests:
       - equal: { path: spec.template.spec.tolerations, value: [{ key: dedicated, operator: Exists }] }
       - equal: { path: spec.template.metadata.labels.team, value: it }
       - equal: { path: spec.template.metadata.annotations.note, value: hi }
+
+  - it: adds extra volumes to the pod and extra mounts to bookstack and migrate only
+    template: deployment.yaml
+    set:
+      extraVolumes:
+        - { name: ca-bundle, configMap: { name: my-ca-bundle } }
+      extraVolumeMounts:
+        - { name: ca-bundle, mountPath: /run/trust, readOnly: true }
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content: { name: ca-bundle, configMap: { name: my-ca-bundle } }
+      - contains:
+          path: spec.template.spec.containers[?(@.name == "bookstack")].volumeMounts
+          content: &caMount { name: ca-bundle, mountPath: /run/trust, readOnly: true }
+      - contains:
+          path: spec.template.spec.initContainers[?(@.name == "migrate")].volumeMounts
+          content: *caMount
+      - notContains:
+          path: spec.template.spec.containers[?(@.name == "nginx")].volumeMounts
+          content: *caMount
+      - notContains:
+          path: spec.template.spec.initContainers[?(@.name == "copy-assets")].volumeMounts
+          content: *caMount

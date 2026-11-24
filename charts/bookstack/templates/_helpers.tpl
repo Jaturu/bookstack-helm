@@ -232,4 +232,7 @@ volumeMounts:
   - { name: bootstrap-cache, mountPath: /var/www/bookstack/bootstrap/cache }
   - { name: app-tmp, mountPath: /tmp }
   - { name: php-conf, mountPath: /etc/bookstack/php.d, readOnly: true }
+{{- with .Values.extraVolumeMounts }}
+{{- toYaml . | nindent 2 }}
+{{- end }}
 {{- end }}
