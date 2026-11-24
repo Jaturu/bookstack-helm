@@ -189,6 +189,9 @@ spec:
         - name: php-conf
           configMap:
             name: {{ $fullname }}-php
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
 
       {{- with .Values.nodeSelector }}
       nodeSelector:

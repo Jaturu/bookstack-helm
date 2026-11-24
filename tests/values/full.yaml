@@ -36,3 +36,10 @@ mariadb:
 imagePullSecrets: [{ name: regcred }]
 nodeSelector: { kubernetes.io/os: linux }
 tolerations: [{ key: dedicated, operator: Exists, effect: NoSchedule }]
+extraVolumes:
+  - name: ca-bundle
+    configMap:
+      name: my-ca-bundle
+      items: [{ key: ca-bundle.crt, path: ca-bundle.crt }]
+extraVolumeMounts:
+  - { name: ca-bundle, mountPath: /run/trust, readOnly: true }

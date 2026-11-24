@@ -399,3 +399,8 @@ nodeSelector: {}
 tolerations: []
 # -- Affinity rules for the BookStack pod.
 affinity: {}
+# -- Extra volumes for the BookStack pod, for example a ConfigMap holding a CA bundle.
+extraVolumes: []
+# -- Extra volume mounts for the BookStack (php-fpm) container and the
+# migrate init container.
+extraVolumeMounts: []
